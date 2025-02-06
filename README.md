@@ -1,6 +1,6 @@
 # Microsoft Defender for Endpoint Azure Connector for VMRay Advanced Malware Sandbox
 
-**Latest Version:** beta - **Release Date:** 
+**Latest Version:** **beta** - **Release Date:** **06-02-2025**
 
 ## Overview
 
