@@ -11,17 +11,17 @@ It also retrieves IOC values from VMRay and submits them into Microsoft Defender
 
 ## Solution Overview
 - The connector is built using Azure logic app, Azure functions app and Azure Storage.
-  1. Azure Logic app `SubmitDefenderAlertsToVMRay-Beta` monitors the alerts from MS Defender as soon any AV/EDR alert are generated. If any AV/EDR alert is found, it will send the alert details to the Azure function app `VMRayDefenderBeta`.
-  2. Azure function app `VMRayDefenderBeta` checks if the alert contains a file and checks if the file hash has already been analyzed by VMRay.
+  1. Azure Logic app `SubmitDefenderAlertsToVMRay` monitors the alerts from MS Defender as soon any AV/EDR alert are generated. If any AV/EDR alert is found, it will send the alert details to the Azure function app `VMRayDefender`.
+  2. Azure function app `VMRayDefender` checks if the alert contains a file and checks if the file hash has already been analyzed by VMRay.
   3. If the hash was already analysed, the system checks if user configure to reanalyse the hash in configuration step, if yes it resubmits that to VMRay to reanalyse, if not it skips re-examining it.
-  4. Azure function app `VMRayDefenderBeta` requests the file from Microsoft Defender by starting a live response session.
+  4. Azure function app `VMRayDefender` requests the file from Microsoft Defender by starting a live response session.
   5. Microsoft Defender starts a live response session that run PowerShell code on the endpoint. The power shell moves the files out of quarantine to a temporary folder before sending to Azure storage(vmray-defender-quarantine-files) container. 
-  6. Azure function app `VMRayDefenderBeta` monitors the Azure storage(vmray-defender-quarantine-files) container and submits the quarantine file to VMRay.
-  7. Azure function app `VMRayDefenderBeta` will wait till the submission is completed and When the VMRay analysis is done VMRay results are sent back to the Azure function app `VMRayDefenderBeta`.
-  8. The Azure function app `VMRayDefenderBeta` post the results as a note within the relevant defender alert.
-  9. If configured to send IOCs, the Azure function app `VMRayDefenderBeta` provides the IOCs as the indicators to Microsoft Defender that may use them for automatically alerting or blocking.
-  10. Once the Azure function app `VMRayDefenderBeta` completes its process, it generates a JSON file named after the Defender Alert ID and uploads it to the Azure Storage Container: vmray-defender-functionapp-status. This JSON file contains all the details of the process.
-  11. The Azure Logic App `SendEmailNotification-Beta` monitors the vmray-defender-functionapp-status container for new files. When a new file is detected, it sends an email notification to the configured recipient in logic app.
+  6. Azure function app `VMRayDefender` monitors the Azure storage(vmray-defender-quarantine-files) container and submits the quarantine file to VMRay.
+  7. Azure function app `VMRayDefender` will wait till the submission is completed and When the VMRay analysis is done VMRay results are sent back to the Azure function app `VMRayDefender`.
+  8. The Azure function app `VMRayDefender` post the results as a note within the relevant defender alert.
+  9. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that may use them for automatically alerting or blocking.
+  10. Once the Azure function app `VMRayDefender` completes its process, it generates a JSON file named after the Defender Alert ID and uploads it to the Azure Storage Container: vmray-defender-functionapp-status. This JSON file contains all the details of the process.
+  11. The Azure Logic App `SendEmailNotification` monitors the vmray-defender-functionapp-status container for new files. When a new file is detected, it sends an email notification to the configured recipient in logic app.
 
 ![solution_overview](Images/solution_overview.png)
 
@@ -311,8 +311,8 @@ It also retrieves IOC values from VMRay and submits them into Microsoft Defender
 
 
 ## Expected Issues With LogicApps
-- Logic App `SubmitDefenderAlertsToVMRay-Beta` runs will fail. This is a expected behaviour.
-- In Logic App **Consumption Plan**, each API call runs for a maximum of **2 minutes** before retrying the process. This is the default behavior for consumption-based Logic Apps. Since this Logic App is calling the `VMRayDefenderBeta` function app and the process might take more than 2m to finish, the Logic App will fail. But the `VMRayDefenderBeta` function app will do all the work behind and let the customers know once the analyisis is completed
+- Logic App `SubmitDefenderAlertsToVMRay` runs will fail. This is a expected behaviour.
+- In Logic App **Consumption Plan**, each API call runs for a maximum of **2 minutes** before retrying the process. This is the default behavior for consumption-based Logic Apps. Since this Logic App is calling the `VMRayDefender` function app and the process might take more than 2m to finish, the Logic App will fail. But the `VMRayDefender` function app will do all the work behind and let the customers know once the analyisis is completed
 
 ![32](Images/32.png)
 
