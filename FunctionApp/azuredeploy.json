@@ -36,11 +36,11 @@
         "description": "Enter Connection String of Your Storage Account."
       }
     },
-    "AzureStorageSasToken": {
+    "AzureStorageAccountKey": {
       "type": "securestring",
       "defaultValue": "",
       "metadata": {
-        "description": "Enter SAS Token of Your Storage Account."
+        "description": "Enter Azure Storage Account Key."
       }
     },
     "AppInsightsWorkspaceResourceID": {
@@ -367,8 +367,8 @@
               "value": "[parameters('AzureStorageConnectionString')]"
             },
             {
-              "name": "AzureStorageSasToken",
-              "value": "[parameters('AzureStorageSasToken')]"
+              "name": "AzureStorageAccountKey",
+              "value": "[parameters('AzureStorageAccountKey')]"
             },
             {
               "name": "CreateIndicatorsInDefender",
