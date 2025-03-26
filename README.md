@@ -416,4 +416,4 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 
 ### Submit-Defender-Alerts-To-VMRay Logic App Installation
 
-- Please re-dploy the Logic App, following the instructions given in the document.[Submit-Defender-Alerts-To-VMRay Logic App Installation](#submit-defender-alerts-to-vmray-logic-app-installation)
+- Please re-deploy the Logic App, following the instructions given in the document.[Submit-Defender-Alerts-To-VMRay Logic App Installation](#submit-defender-alerts-to-vmray-logic-app-installation)
