@@ -1,0 +1,6 @@
+azure-functions
+requests
+azure-storage-file-share==12.3.0
+azure-storage-blob
+vmray-rest-api
+requests-toolbelt
