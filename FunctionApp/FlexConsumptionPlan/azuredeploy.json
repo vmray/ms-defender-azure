@@ -429,7 +429,7 @@
         "WaitSection"
       ],
       "properties": {
-        "packageUri": "https://github.com/vmray/ms-defender-azure/raw/refs/heads/main/FunctionApp/released-package.zip",
+        "packageUri": "https://github.com/vmray/ms-defender-azure/raw/refs/heads/main/FunctionApp/FlexConsumptionPlan/released-package.zip",
         "remoteBuild": true
       }
     },
