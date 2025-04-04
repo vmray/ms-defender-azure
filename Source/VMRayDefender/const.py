@@ -1,6 +1,7 @@
 """
 constant File
 """
+# pylint: disable=invalid-name
 
 from collections import namedtuple
 from os import environ
@@ -49,6 +50,9 @@ IndicatorConfig = namedtuple(
 
 @dataclass
 class GeneralConfig:
+    """
+    GeneralConfig
+    """
     INDICATOR_VERDICTS: list[str]
     SELECTED_VERDICTS: list[str] = field(
         default_factory=lambda: ["suspicious", "malicious", "clean"]
@@ -67,6 +71,9 @@ GENERAL_CONFIG = GeneralConfig(
 
 @dataclass
 class VMRayConfig:
+    """
+    VMRay Configuration
+    """
     API_KEY: str
     URL: str
     ANALYSIS_JOB_TIMEOUT: int
@@ -106,6 +113,9 @@ VMRay_CONFIG = VMRayConfig(
 
 @dataclass
 class MachineActionStatus:
+    """
+    Machine Status
+    """
     PENDING: str = "Pending"
     IN_PROGRESS: str = "InProgress"
     SUCCEEDED: str = "Succeeded"
@@ -124,6 +134,9 @@ MACHINE_ACTION_STATUS = MachineActionStatus()
 
 @dataclass
 class APIConfig:
+    """
+    Microsoft API Configurations
+    """
     TENANT_ID: str
     APPLICATION_ID: str
     APPLICATION_SECRET: str
@@ -185,27 +198,42 @@ INDICATOR = IndicatorConfig(
 
 
 class EnrichmentSectionTypes(Enum):
+    """
+    VMRay section to enrich
+    """
     CLASSIFICATIONS = "classifications"
     THREAT_NAMES = "threat_names"
     VTIS = "vtis"
 
 
 class IngestionConfig(Enum):
+    """
+    Type of alert ingestion
+    """
     EDR_BASED_INGESTION = True
     AV_BASED_INGESTION = True
 
 
 class EDREnrichment(Enum):
+    """
+    EDR alert ingestion
+    """
     ACTIVE = True
     SELECTED_SECTIONS = ["classiIngestionConfigfications", "threat_names", "vtis"]
 
 
 class AVEnrichment(Enum):
+    """
+    Antivirus alert ingestion
+    """
     ACTIVE = True
     SELECTED_SECTIONS = ["classifications", "threat_names", "vtis"]
 
 
 class JobStatus(Enum):
+    """
+    Job Status
+    """
     QUEUED = "queued"
     INWORK = "inwork"
 
@@ -228,4 +256,3 @@ MS_DEFENDER_SEVERITY_MAPPING = {
 
 RETRY_STATUS_CODE = [500, 501, 502, 503, 504, 429]
 AUTH_ERROR_STATUS_CODE = 401
-

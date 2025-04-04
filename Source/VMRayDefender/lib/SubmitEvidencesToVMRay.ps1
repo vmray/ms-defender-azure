@@ -38,7 +38,10 @@ function restore_quarantined_files
 
     while ($retries -lt $maxRetries -and !$exclusionAdded)
     {
-        $currentExclusions = Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
+        # Pausing for 10 seconds to give Windows Defender time to set the exclusion properly.
+        Write-Host "Sleeping for 10 sec";
+        Start-Sleep -Seconds 10
+        $currentExclusions = Get-MpPreference | Select-Object -ExpandProperty ExclusionPath;
 
         if ($currentExclusions -contains $folder)
         {
@@ -106,6 +109,11 @@ function submit_sample_to_ms_blob
         Write-Host "QuarantinedFilesFound"
         Write-Host "Count $( $files.Count )"
     }
+    else
+    {
+        Write-Host "No Quarantined Files Found"
+        return
+    }
     $evidence_list = $evidences -split "vmray"
     Write-Host "evidence $evidence_list"
 
@@ -161,13 +169,13 @@ function Upload-BlobToAzure
 
     Write-Host "Uploading $blobName to container $containerName..."
     $blobUrl = "https://$accountName.blob.core.windows.net/$containerName/$blobName$signedAuthorizationKey"
-    $fileContent = [System.IO.File]::ReadAllBytes($filePath)
 
     $headers = @{
         "x-ms-blob-type" = "BlockBlob"
     }
     try
     {
+    	$fileContent = [System.IO.File]::ReadAllBytes($filePath)
         Invoke-RestMethod -Uri $blobUrl -Method Put -Headers $headers -Body $fileContent -ContentType "application/octet-stream"
         Write-Host "Uploaded $blobName successfully."
     }

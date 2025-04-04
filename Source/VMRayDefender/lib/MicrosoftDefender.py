@@ -172,22 +172,22 @@ class MicrosoftDefender:
             raw_alert = json_response
             self.log.info(f"Successfully retrieved alert {alert}")
             try:
-                if raw_alert["detectionSource"] not  in ALERT.SELECTED_DETECTION_SOURCES:
+                if raw_alert["detectionSource"] not in ALERT.SELECTED_DETECTION_SOURCES:
                     return evidences
                 for evidence in raw_alert["evidence"]:
                     evidence_sha256 = evidence["sha256"]
 
-                    if not all([
-                        evidence["entityType"] in ALERT.EVIDENCE_ENTITY_TYPES
-                        and evidence_sha256 is not None
-                        and evidence_sha256.lower() != "none"
-                    ]):
+                    if not all(
+                        [
+                            evidence["entityType"] in ALERT.EVIDENCE_ENTITY_TYPES
+                            and evidence_sha256 is not None
+                            and evidence_sha256.lower() != "none"
+                        ]
+                    ):
                         continue
 
                     if evidence_sha256 in evidences:
-                        evidences[evidence_sha256].alert_ids.add(
-                            raw_alert["id"]
-                        )
+                        evidences[evidence_sha256].alert_ids.add(raw_alert["id"])
                         evidences[evidence_sha256].machine_ids.add(
                             raw_alert["machineId"]
                         )
@@ -199,17 +199,11 @@ class MicrosoftDefender:
                             file_path=evidence["filePath"],
                             alert_id=raw_alert["id"],
                             machine_id=raw_alert["machineId"],
-                            detection_source=raw_alert[
-                                "detectionSource"
-                            ],
+                            detection_source=raw_alert["detectionSource"],
                         )
-                        evidences[evidence_sha256].set_comments(
-                            raw_alert["comments"]
-                        )
+                        evidences[evidence_sha256].set_comments(raw_alert["comments"])
             except Exception as err:
-                self.log.warning(
-                    "Failed to parse alert object - Error: %s" % err
-                )
+                self.log.warning("Failed to parse alert object - Error: %s" % err)
             self.log.info(
                 f"Successfully retrieved alert {alert} and {len(evidences)} evidences"
             )
@@ -747,10 +741,14 @@ class MicrosoftDefender:
                                                             self.log.info(
                                                                 "Quarantine Files found"
                                                             )
-                                                            if "NoMatchFound" in log_msg:
+                                                            if (
+                                                                "NoMatchFound"
+                                                                in log_msg
+                                                            ):
                                                                 self.log.info(
                                                                     "The evidence hash does"
                                                                     " not match the hash of any quarantined files."
+                                                                    "Or defender block the quarantine file during"
                                                                 )
                                                             machine.run_script_live_response_finished = (
                                                                 True
@@ -759,12 +757,12 @@ class MicrosoftDefender:
                                                             if file_counter < 2:
                                                                 file_counter += 1
                                                                 self.log.info(
-                                                                    f"No quarantined items for threat {threat_name} found waitng to get the file"
+                                                                    f"No quarantined items for threat {threat_name} found waiting to get the file"
                                                                 )
                                                                 sleep(60)
                                                                 continue
                                                             self.log.info(
-                                                                "No Quartine Files Found"
+                                                                "No Quarantine Files Found"
                                                             )
                                         machine.run_script_live_response_finished = True
                                         self.log.info(
@@ -783,6 +781,7 @@ class MicrosoftDefender:
                                 "Failed to create run script live response job for machine %s - Error: %s"
                                 % (machine.id, err)
                             )
+                            live_response_counter += 1
                     else:
                         # waiting the machine for pending live response jobs
                         sleep(MACHINE_ACTION.SLEEP)
@@ -1072,7 +1071,9 @@ class MicrosoftDefender:
                         sleep(backoff // retries)
                         attempt += 1
                         continue
-                    self.log.error(f"Error In Defender API calling: {herr}")
+                    json_response = response.json()
+                    err_msg = json_response.get("error", {}).get("message", "")
+                    self.log.error(f"Error In Defender API calling: {err_msg}")
                     raise Exception(
                         "An error occurred during MicrosoftDefender Retry Request"
                     ) from herr
@@ -1095,4 +1096,3 @@ class MicrosoftDefender:
                 raise Exception(
                     "An error occurred during MicrosoftDefender Retry Request"
                 ) from err
-

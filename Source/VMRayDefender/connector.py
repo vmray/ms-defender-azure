@@ -463,4 +463,3 @@ def main(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
         log.error("Exception Occured: %s", str(ex))
         log.error(error_msg)
         return func.HttpResponse("Internal Server Exception", status_code=500)
-

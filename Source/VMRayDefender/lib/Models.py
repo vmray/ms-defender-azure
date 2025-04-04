@@ -3,18 +3,21 @@ from dataclasses import dataclass, field
 from typing import Any
 from ..const import MS_DEFENDER_SEVERITY_MAPPING
 
+
 @dataclass
 class LiveResponse:
     """
     LiveResponse class for storing live response job details
     """
-    index: int= 0
+
+    index: int = 0
     has_error: bool = False
     is_finished: bool = False
     status: Any = None
     id: Any = None
     download_url: Any = None
     timeout_counter: int = 0
+
 
 @dataclass
 class Evidence:
@@ -46,6 +49,7 @@ class Evidence:
                     b64encode(comment["comment"].encode("utf-8")).decode("utf-8")
                 )
 
+
 @dataclass
 class Machine:
     """
@@ -65,8 +69,8 @@ class Machine:
         """
         for evidence in self.edr_evidences.values():
             if (
-                    not evidence.live_response.is_finished
-                    and not evidence.live_response.has_error
+                not evidence.live_response.is_finished
+                and not evidence.live_response.has_error
             ):
                 return True
 
@@ -78,6 +82,7 @@ class Machine:
             for evidence in self.edr_evidences.values()
             if evidence.live_response.download_url is not None
         ]
+
 
 @dataclass
 class Indicator:
@@ -135,4 +140,3 @@ class TimeoutStatus:
         # If vmray_timeout was not passed, initialize it as an empty list
         if not self.vmray_timeout:
             self.vmray_timeout = []
-

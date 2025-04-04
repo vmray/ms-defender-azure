@@ -1,6 +1,8 @@
 """
 VMRay API
 """
+# pylint: disable=invalid-name
+
 from datetime import datetime
 from io import BytesIO
 from ipaddress import ip_address
@@ -320,7 +322,7 @@ class VMRay:
         params = {
             "comment": self.config.SUBMISSION_COMMENT,
             "tags": ",".join(self.config.SUBMISSION_TAGS),
-            "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT
+            "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT,
         }
 
         submissions = []
@@ -536,7 +538,7 @@ class VMRay:
         params = {
             "comment": self.config.SUBMISSION_COMMENT,
             "tags": ",".join(self.config.AV_SUBMISSION_TAGS),
-            "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT
+            "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT,
         }
         method = "POST"
         url = "/rest/sample/submit"
@@ -679,4 +681,3 @@ class VMRay:
                     f"Request failed after {vmray_retries} retries. Error: {err}"
                 )
                 raise Exception("An error occurred during retry request") from err
-
