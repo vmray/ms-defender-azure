@@ -2,16 +2,16 @@
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "metadata": {
-        "title": "Submit Microsoft Defender EDR/AV Alerts to VMRay Function App", 
+        "title": "Submit Microsoft Defender EDR/AV Alerts to VMRay Function App",
         "description": "This playbook runs when a Microsoft Defender alert is generated.",
-        "prerequisites": "VMRay Defender Function App",       
+        "prerequisites": "VMRay Defender Function App",
         "prerequisitesDeployTemplateFile": "../FunctionApp/azuredeploy.json",
-        "postDeploymentSteps": ["None"],      
-        "lastUpdateTime": "2025-02-04T00:00:00.000Z", 
-        "entities": [""], 
-        "tags": [""], 
+        "postDeploymentSteps": ["None"],
+        "lastUpdateTime": "2025-02-04T00:00:00.000Z",
+        "entities": [""],
+        "tags": [""],
         "support": {
-            "tier": "community" 
+            "tier": "community"
         },
         "author": {
             "name": "VMRay"
@@ -87,7 +87,7 @@
                     "parameters": {
                         "DefenderAlertSeverity": {
                             "defaultValue": [
-                                "High"
+                                "UnSpecified", "Informational", "Low", "Medium", "High"
                             ],
                             "type": "Array",
                             "metadata": {
@@ -96,7 +96,7 @@
                         },
                         "DefenderAlertStatus": {
                             "defaultValue": [
-                                "Resolved"
+                                "New", "InProgress"
                             ],
                             "type": "Array",
                             "metadata": {
