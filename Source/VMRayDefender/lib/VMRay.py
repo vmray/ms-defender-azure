@@ -1,6 +1,7 @@
 """
 VMRay API
 """
+
 # pylint: disable=invalid-name
 
 from datetime import datetime
@@ -11,7 +12,7 @@ from urllib.parse import urlparse
 
 from vmray.rest_api import VMRayRESTAPI, VMRayRESTAPIError
 
-from ..const import GENERAL_CONFIG, JobStatus, RETRY_STATUS_CODE, VMRay_CONFIG
+from ..const import GENERAL_CONFIG, RETRY_STATUS_CODE, JobStatus, VMRay_CONFIG
 
 
 class VMRay:
@@ -264,7 +265,7 @@ class VMRay:
         :param iocs: dict object which contains raw IOC data about the sample
         :return file_iocs: dict object which contains sha256 hashes and file_names as IOC values
         """
-        file_iocs = {"sha256": set(), "sha1": set(), "md5": set()}
+        file_iocs = {"sha256": set()}
 
         for ioc_type in iocs:
             files = iocs[ioc_type]["iocs"]["files"]
@@ -274,8 +275,6 @@ class VMRay:
                         file_iocs["sha256"].add(
                             (file_hash["sha256_hash"], file["verdict"])
                         )
-                        file_iocs["sha1"].add((file_hash["sha1_hash"], file["verdict"]))
-                        file_iocs["md5"].add((file_hash["md5_hash"], file["verdict"]))
 
         return file_iocs
 
@@ -312,8 +311,8 @@ class VMRay:
 
     def submit_samples(self, evidences):
         """
-        Submit sample to VMRay Sandbox to analyze
-        :param evidences: list of evidences which downloaded from Microsoft Defender for Endpoint
+        Submit a sample to VMRay Sandbox to analyze
+        :param evidences: a list of evidences which downloaded from Microsoft Defender for Endpoint
         :return submissions: dict object which contains submission_id and sample_id
         """
         method = "POST"
@@ -321,7 +320,7 @@ class VMRay:
 
         params = {
             "comment": self.config.SUBMISSION_COMMENT,
-            "tags": ",".join(self.config.SUBMISSION_TAGS),
+            "tags": "EDR_alert",
             "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT,
         }
 
@@ -359,7 +358,7 @@ class VMRay:
         self.log.info("%d files submitted to VMRay" % len(submissions))
         return submissions
 
-    def wait_submissions(self, submissions, timeout_status):
+    def wait_submissions(self, submissions):
         """
         Wait for the submission analyses to finish
         :param submissions: list of submission dictionaries
@@ -413,12 +412,6 @@ class VMRay:
                             self.log.error(
                                 "Submission job %d exceeded the configured time threshold."
                                 % submission_object["submission_id"]
-                            )
-                            timeout_status.vmray_timeout.append(
-                                {
-                                    "submission_id": submission_object["submission_id"],
-                                    "timeout": True,
-                                }
                             )
                             yield {
                                 "finished": False,
@@ -529,15 +522,16 @@ class VMRay:
                         submission["evidence"] = machine.av_evidences[evidence]
         return submissions
 
-    def submit_av_samples(self, file_objects):
+    def submit_av_samples(self, file_objects, threat_name):
         """
         Submit AV files to VMRay
         :param file_objects: Blob from azure
+        :param threat_name: threat_name from an associated alert
         :return: Submissions List
         """
         params = {
             "comment": self.config.SUBMISSION_COMMENT,
-            "tags": ",".join(self.config.AV_SUBMISSION_TAGS),
+            "tags": f"AV_Alert,{threat_name}" if threat_name else "AV_Alert",
             "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT,
         }
         method = "POST"
@@ -681,3 +675,4 @@ class VMRay:
                     f"Request failed after {vmray_retries} retries. Error: {err}"
                 )
                 raise Exception("An error occurred during retry request") from err
+        raise Exception("Failed to complete VMRay request after multiple retries.")
