@@ -1,6 +1,9 @@
+"""Models"""
+
 from base64 import b64encode
 from dataclasses import dataclass, field
 from typing import Any
+
 from ..const import MS_DEFENDER_SEVERITY_MAPPING
 
 
@@ -127,16 +130,3 @@ class Indicator:
             "expirationTime": self.expirationTime,
             "generateAlert": self.generate_alert,
         }
-
-
-@dataclass
-class TimeoutStatus:
-    machine_timeout: bool = False
-    live_response_timeout: bool = False
-    live_response_status: bool = True
-    vmray_timeout: list = field(default_factory=list)
-
-    def __post_init__(self):
-        # If vmray_timeout was not passed, initialize it as an empty list
-        if not self.vmray_timeout:
-            self.vmray_timeout = []
