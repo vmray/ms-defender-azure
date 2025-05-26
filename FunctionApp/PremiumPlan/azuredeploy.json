@@ -114,7 +114,7 @@
     },
     "VmrayAnalysisJobTimeout": {
       "type": "int",
-      "defaultValue": 5,
+      "defaultValue": 30,
       "metadata": {
         "description": "Provide maximum time to wait in minutes, when VMRay Job submissions is not responding."
       }
