@@ -2,6 +2,9 @@
 Microsoft Defender Class
 """
 
+# pylint: disable=line-too-long
+# pylint: disable=consider-using-f-string
+
 from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 from gzip import GzipFile
@@ -17,15 +20,15 @@ from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 from ..const import (
     ALERT,
+    AUTH_ERROR_STATUS_CODE,
     DEFENDER_API,
-    EnrichmentSectionTypes,
+    HELPER_SCRIPT_FILE_NAME,
     INDICATOR,
     IOC_FIELD_MAPPINGS,
     MACHINE_ACTION,
     MACHINE_ACTION_STATUS,
     RETRY_STATUS_CODE,
-    HELPER_SCRIPT_FILE_NAME,
-    AUTH_ERROR_STATUS_CODE,
+    EnrichmentSectionTypes,
 )
 from .Models import Evidence, Indicator
 
@@ -342,11 +345,10 @@ class MicrosoftDefender:
                     % (live_response_id, err)
                 )
 
-    def wait_run_script_live_response(self, live_response_id, timeout_status):
+    def wait_run_script_live_response(self, live_response_id):
         """
         This function checks the live response execution
         :param live_response_id: Live response ID
-        :param timeout_status: Timeout status object
         :return tuple: status and Machine Action response
         """
         timeout_counter = 0
@@ -359,7 +361,6 @@ class MicrosoftDefender:
             and not has_error
             and not is_finished
         ):
-            timeout_status.live_response_timeout = False
             sleep(MACHINE_ACTION.JOB_SLEEP)
             machine_action = self.get_machine_action(live_response_id)
             if machine_action is not None:
@@ -371,7 +372,6 @@ class MicrosoftDefender:
                         "Live response job %s failed with error" % live_response_id
                     )
                     has_error = True
-                    timeout_status.live_response_status = False
                 else:
                     timeout_counter += 1
             else:
@@ -385,7 +385,6 @@ class MicrosoftDefender:
                 "Live response job %s failed with error - Error: %s"
                 % (live_response_id, error_message)
             )
-            timeout_status.live_response_timeout = True
             has_error = True
             self.cancel_machine_action(live_response_id)
             sleep(MACHINE_ACTION.JOB_SLEEP)
@@ -395,7 +394,7 @@ class MicrosoftDefender:
 
         return True, machine_action
 
-    def wait_live_response(self, live_response, machine_timeout):
+    def wait_live_response(self, live_response):
         """
         Waiting live response machine action job to finish with configured timeout checks
         :param live_response: live_response object
@@ -409,7 +408,6 @@ class MicrosoftDefender:
             and not live_response.is_finished
         ):
             sleep(MACHINE_ACTION.JOB_SLEEP)
-            machine_timeout.live_response_timeout = False
             machine_action = self.get_machine_action(live_response.id)
             if machine_action is not None:
                 if machine_action["status"] == MACHINE_ACTION_STATUS.SUCCEEDED:
@@ -439,7 +437,6 @@ class MicrosoftDefender:
                 % (live_response.id, error_message)
             )
             live_response.has_error = True
-            machine_timeout.live_response_timeout = True
             live_response.status = MACHINE_ACTION_STATUS.TIMEOUT
             self.cancel_machine_action(live_response.id)
             sleep(MACHINE_ACTION.JOB_SLEEP)
@@ -488,11 +485,10 @@ class MicrosoftDefender:
 
         return live_response
 
-    def run_edr_live_response(self, machines, timeout_status):
+    def run_edr_live_response(self, machines):
         """
         This function will execute EDR live response command
         :param machines: List of machine contains evidences
-        :param timeout_status: Timeout status objects
         """
         for machine in machines:
             if len(machine.edr_evidences) > 0:
@@ -582,8 +578,7 @@ class MicrosoftDefender:
                                                 )
                                                 evidence.live_response = (
                                                     self.wait_live_response(
-                                                        evidence.live_response,
-                                                        timeout_status,
+                                                        evidence.live_response
                                                     )
                                                 )
 
@@ -611,7 +606,6 @@ class MicrosoftDefender:
                         sleep(MACHINE_ACTION.SLEEP)
                         machine.timeout_counter += 1
                 if machine.has_pending_edr_actions():
-                    timeout_status.machine_timeout = True
                     self.log.error(
                         "Machine %s was not available during the timeout (%s seconds)"
                         % (machine.id, MACHINE_ACTION.MACHINE_TIMEOUT)
@@ -619,11 +613,10 @@ class MicrosoftDefender:
 
         return machines
 
-    def run_av_submission_script(self, machines, timeout_status, threat_name=""):
+    def run_av_submission_script(self, machines, threat_name=""):
         """
         This function will execute AV live response command
         :param machines: List of machine contains evidences
-        :param timeout_status: Timeout status objects
         :param threat_name: Threat name from alert response
         """
         for machine in machines:
@@ -693,7 +686,7 @@ class MicrosoftDefender:
                                         result,
                                         machine_action,
                                     ) = self.wait_run_script_live_response(
-                                        live_response_id, timeout_status
+                                        live_response_id
                                     )
                                     if result:
                                         command = machine_action["commands"][0]
@@ -749,17 +742,18 @@ class MicrosoftDefender:
                                                                     "The evidence hash does"
                                                                     " not match the hash of any quarantined files."
                                                                     "Or defender block the quarantine file during"
+                                                                    " hash calculation."
                                                                 )
                                                             machine.run_script_live_response_finished = (
                                                                 True
                                                             )
                                                         else:
-                                                            if file_counter < 2:
+                                                            if file_counter < 1:
                                                                 file_counter += 1
                                                                 self.log.info(
                                                                     f"No quarantined items for threat {threat_name} found waiting to get the file"
                                                                 )
-                                                                sleep(60)
+                                                                sleep(300)
                                                                 continue
                                                             self.log.info(
                                                                 "No Quarantine Files Found"
@@ -789,7 +783,6 @@ class MicrosoftDefender:
                         machine.timeout_counter += 1
 
                 if MACHINE_ACTION.MACHINE_RETRY <= machine.timeout_counter:
-                    timeout_status.machine_timeout = True
                     self.log.error(
                         "Machine %s was not available during the timeout (%s seconds)"
                         % (machine.id, MACHINE_ACTION.MACHINE_TIMEOUT)
@@ -1096,3 +1089,4 @@ class MicrosoftDefender:
                 raise Exception(
                     "An error occurred during MicrosoftDefender Retry Request"
                 ) from err
+        raise Exception("Failed to complete microsoft request after multiple retries.")
