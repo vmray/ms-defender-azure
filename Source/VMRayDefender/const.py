@@ -86,15 +86,6 @@ class VMRayConfig:
     SUBMISSION_COMMENT: str = (
         "Sample from VMRay Analyzer - Microsoft Defender for Endpoint Connector"
     )
-    SUBMISSION_TAGS: list[str] = field(
-        default_factory=lambda: ["MicrosoftDefenderForEndpoint"]
-    )
-    AV_SUBMISSION_TAGS: list[str] = field(
-        default_factory=lambda: [
-            "MicrosoftDefenderForEndpoint",
-            "SubmittedFromEndpoint",
-        ]
-    )
     ANALYSIS_TIMEOUT: int = 120
     RESUBMISSION_VERDICTS: list[str] = field(
         default_factory=lambda: ["malicious", "suspicious", "clean"]
@@ -104,7 +95,7 @@ class VMRayConfig:
 VMRay_CONFIG = VMRayConfig(
     API_KEY=environ.get("VmrayAPIKey"),
     URL=environ.get("VmrayBaseURL"),
-    ANALYSIS_JOB_TIMEOUT=int(environ.get("VmrayAnalysisJobTimeout", 5)) * 60,
+    ANALYSIS_JOB_TIMEOUT=int(environ.get("VmrayAnalysisJobTimeout", 30)) * 60,
     RESUBMIT=str_to_bool(environ.get("VmrayResubmit", "True")),
     VMRay_API_RETRIES=int(environ.get("VmrayApiMaxRetry", 5)),
     VMRay_API_TIMEOUT=int(environ.get("VmrayAPIRetryTimeout", 5)) * 60,
