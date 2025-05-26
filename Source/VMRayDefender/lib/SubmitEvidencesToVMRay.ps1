@@ -38,9 +38,9 @@ function restore_quarantined_files
 
     while ($retries -lt $maxRetries -and !$exclusionAdded)
     {
-        # Pausing for 10 seconds to give Windows Defender time to set the exclusion properly.
-        Write-Host "Sleeping for 10 sec";
-        Start-Sleep -Seconds 10
+        # Pausing for 12 seconds to give Windows Defender time to set the exclusion properly.
+        Write-Host "Sleeping for 12 sec";
+        Start-Sleep -Seconds 12
         $currentExclusions = Get-MpPreference | Select-Object -ExpandProperty ExclusionPath;
 
         if ($currentExclusions -contains $folder)
