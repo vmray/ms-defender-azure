@@ -283,7 +283,7 @@
                                                 "body": {
                                                     "alert": "@triggerBody()",
                                                     "threat_name": "@body('Alerts_-_Get_single_alert')['threatName']",
-                                                    "detection_source": "@variables('defender_alert_source')"
+                                                    "detection_source": "@variables('defender_alert_source')",
 						    "threat_family": "@body('Alerts_-_Get_single_alert')['threatFamilyName']"
                                                 },
                                                 "function": {
