@@ -1,6 +1,6 @@
 # Microsoft Defender for Endpoint Azure Connector for VMRay Advanced Malware Sandbox
 
-**Latest Version:** 1.0.0-beta.2 - **Release Date:25/03/2025** 
+**Latest Version:** 1.0.0 - **Release Date:26/05/2025** 
 
 ## Overview
 
@@ -20,10 +20,8 @@ It also retrieves IOC values from VMRay and submits them into Microsoft Defender
   7. Azure function app `VMRayDefender` will wait till the submission is completed and When the VMRay analysis is done VMRay results are sent back to the Azure function app `VMRayDefender`.
   8. The Azure function app `VMRayDefender` post the results as a note within the relevant defender alert.
   9. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that may use them for automatically alerting or blocking.
-  10. Once the Azure function app `VMRayDefender` completes its process, it generates a JSON file named after the Defender Alert ID and uploads it to the Azure Storage Container: vmray-defender-functionapp-status. This JSON file contains all the details of the process.
-  11. The Azure Logic App `SendEmailNotification` monitors the vmray-defender-functionapp-status container for new files. When a new file is detected, it sends an email notification to the configured recipient in logic app.
   
-Note: This solution cannot analyze files removed by Defender. It can only analyze files that Defender AV has moved to quarantine or flagged by Defender EDR.
+Note: This solution cannot analyze files removed by Defender. It can only analyze files that Defender AV has moved to quarantine or flagged by Defender EDR
 
 ![solution_overview](Images/solution_overview.png)
 
@@ -33,13 +31,9 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 - Microsoft Azure
   1. Azure functions with Flex Consumption plan.
      Reference: https://learn.microsoft.com/en-us/azure/azure-functions/flex-consumption-plan
-	 **Note: Flex Consumption plans are not available in all regions, please check if the region your are deploying the function is supported, if not we suggest you to deploy the function app with premium plan. **
-	 Reference: https://learn.microsoft.com/en-us/azure/azure-functions/flex-consumption-how-to?tabs=azure-cli%2Cvs-code-publish&pivots=programming-language-python#view-currently-supported-regions
-  2. Azure functions Premium plan.
-	 Reference: https://learn.microsoft.com/en-us/azure/azure-functions/functions-premium-plan
-  3. Azure Logic App with Consumption plan.
+  2. Azure Logic App with Consumption plan.
      Reference: https://learn.microsoft.com/en-us/azure/logic-apps/logic-apps-pricing#consumption-multitenant
-  4. Azure storage with Standard general-purpose v2.
+  3. Azure storage with Standard general-purpose v2.
 
 ## VMRay Configurations
 
@@ -126,21 +120,19 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 
 ## Microsoft Azure Function App Installation And Configuration
 
-### Deployment of Function App 
+### Deployment of Function App
 
-#### Flex Consumption Plan
+- Open [https://portal.azure.com/](https://portal.azure.com) and search `Deploy a custom template` service.
 
-- Click on below button to deploy:
+![11](Images/11.png)
 
-  [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FFunctionApp%2FFlexConsumptionPlan%2Fazuredeploy.json)
-
-#### Premium Plan
-
-- Click on below button to deploy:
-
-  [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FFunctionApp%2FPremiumPlan%2Fazuredeploy.json)
+- On the next page select `Build your own template` in the editor.
   
-  
+![12](Images/12.png)
+
+- Copy `azuredeploy.json` contents from the `FunctionApp` folder and save it (without editing it).
+
+![13](Images/13.png)
 
 - On the next page, please provide the values accordingly.
   
@@ -175,13 +167,22 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 	
 - Once you provide the above values, please click on `Review + create` button.
 
-### Storage Account Keys
+### Deployment of Function App Zip package
 
+- Download the zip package from the `FunctionApp` folder.
 - Open [https://portal.azure.com/](https://portal.azure.com) and search `Storage accounts` service.
 
 ![14](Images/14.png)
 
 - Open the storage account, the name starts with `vmraystorage`.
+- Go to `Storage Browser` -> `Blob Containers`, click on container, the name starts with `vmraycontainer`.
+- Click on `Switch to Access key`.
+
+![15a](Images/15a.png)
+
+- Upload the downloaded zip package to the container. 
+
+![15](Images/15.png)
 
 - Go to `Security + networking` -> `Access keys`, Copy `Connection string` and save it temporarily for next steps.
 
@@ -215,10 +216,15 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 
 - This playbook is mandatory. The Logic App collects the Defender Alerts and sends to VMRay Function App Connector for further processing.
 
-- Click on below button to deploy:
+- Open [https://portal.azure.com/](https://portal.azure.com) and search `Deploy a custom template` service.
 
-  [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FLogicApp%2Fazuredeploy1.json)
+![11](Images/11.png)
 
+- On the next page select `Build your own template` in the editor.
+  
+![12](Images/12.png)
+
+- Copy `azuredeploy1.json` contents from the `LogicApp` folder and save it.
 - On the next page, provide the appropriate `Subscription` and `Resource group` and click on `Review & create`.
 
   **Note**: When deploying the function app if you chose a different name, please kindly provide the same name here as well.
@@ -232,7 +238,7 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 
 ![23](Images/23.png)
 
-- On the next page, choose `Authentication` as `Service prinicipal`, and provide the `ClientId`, `Client Secret` and `Tenant` values created via Entra ID app registration previously.
+- On the next page, choose `Authentication` as `Service prinicipal`, and provide appropriate values.
 
 ![24](Images/24.png)
 ![25](Images/25.png)
@@ -243,7 +249,7 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 
 #### Filtering the Defender alerts
 
-- If you would like to filter the Defender alerts based on alert severity or alert status, click on `Parameters`, and set the `DefenderAlertSeverity` and `DefenderAlertStatus` property values accordingly.
+- If you would like to filter the Defender alerts based on alert severity or alert status, click on `Parameters`, and set the `DefenderAlertSeverity` and `DefenderAlertStatus` property values accordingly, by default both the values are set to `ALL`.
 
 - Allowed values for `DefenderAlertSeverity` parameter are listed below, kindly note all values are case-senitive
 	* High
@@ -251,64 +257,16 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 	* Low
 	* Informational
 	* UnSpecified
-	
-- For example, if you want to filter the alert by "Medium" and "High" severity, you need to set the value as ["Medium","High"].
+	* ALL
 	
 - Allowed values for `DefenderAlertStatus` parameter are listed below, kindly note all values are case-senitive
 	* New
 	* InProgress
 	* Resolved
 	* Unknown
-
-- For example, if you want to filter the alert by "New", you need to set the value as ["New"].
+	* ALL	
 
 ![logicapp01](Images/logicapp01.png)
-
-- Save the Logic App.
-
-
-### Submit-VMRay-Analysis-Results-Via-Email Logic App Installation
-
-- This playbook is optional. This logic app is used to notify users about the defender alert status via email.
-
-- Click on below button to deploy:
-
-  [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FLogicApp%2Fazuredeploy2.json)
-  
-- On the next page, provide the appropriate `Subscription` and `Resource group` and click on `Review & create`.
-
-![26](Images/26.png)
-
-- Once the deployment is complete, go to newly deployed logic app, click on edit. The logic app will open in a designer mode.
-- Click on the `Azure Blob Trigger`, click on `Change connection` and click on `Add new` on the following page.
-
-![27](Images/27.png)
-
-- Provide appropriate values and click on `Create new`.
-
-![28](Images/28.png)
-
-- Click on `folder icon` on the `Container box`.
-
-![28a](Images/28a.png)
-
-- Select folder named `vmray-defender-functionapp-status`
-
-![28b](Images/28b.png)  
-  
-- Click on `Get blob content` action, click on `Change connection`.
-
-![29](Images/29.png)
-
-- Select the connection created in the above step.
-
-![30](Images/30.png)
-
-- Do the same `Delete blob` action, click on `Change connection` and select the connection created in the above step.
-
-- Click on `Send an Email(V2)` action, click on `Change connection` and click on `Add new` , provide appropriate connection.
-
- ![31](Images/31.png) 
 
 - Save the Logic App.
 
@@ -349,18 +307,70 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 
 ## Version History
 
-|       Version       |   Release Date | Release Notes
-|:---------------------|:--------------------|:---------------- |
-| 1.0.0-beta.1		|  `07-02-2025`  | Initial Release |
-| 1.0.0-beta.2 	| `25-03-2025` | <ul><li>Added the ability to filter the Defender Alerts by alert severity and alert status</li><li>Removed the dependency of Azure SaS Token from function app configuration</li><li>Bug Fixes</li></ul> |
+| Version        | Release Date | Release Notes
+|:---------------|:-------------|:---------------- |
+| 1.0.0          | `26-05-2025` | Initial Release |
+| 1.0.0-beta.2 	 | `25-03-2025` | <ul><li>Added the ability to filter the Defender Alerts by alert severity and alert status</li><li>Removed the dependency of Azure SaS Token from function app configuration</li><li>Bug Fixes</li></ul> |
+| 1.0.0-beta.1   | `07-02-2025` | Initial Release |
 
 
-## Steps to Update from 1.0.0-beta.1 to 1.0.0-beta.2 Version 
+## Steps to Update from 1.0.0-beta.2 to 1.0.0
 
-### Function App Installation
+### Deploy Function App
+- Please re-dploy the Function App, following the instructions given in the document.[Deployment of Function App](#deployment-of-function-app)
 
-- Please re-deploy the Function App, following the instructions given in the document.[Deployment of Function App](#deployment-of-function-app)
+### Deploy Logic App
+
+- Please re-dploy the Logic App, following the instructions given in the document.[Submit-Defender-Alerts-To-VMRay Logic App Installation](#submit-defender-alerts-to-vmray-logic-app-installation)
+
+## Steps to Update from 1.0.0-beta.1 to 1.0.0-beta.2 Version
+
+- Open the storage account, the name starts with `vmraystorage`.
+
+- Go to `Security + networking` -> `Access keys`, Copy `Key` and save it temporarily for next steps.
+
+![17](Images/17.png)
+
+### Deployment of Function App Zip package
+
+- Download the zip package from the `FunctionApp` folder.
+- Open [https://portal.azure.com/](https://portal.azure.com) and search `Storage accounts` service.
+
+![14](Images/14.png)
+
+- Open the storage account, the name starts with `vmraystorage`.
+- Go to `Storage Browser` -> `Blob Containers`, click on container, the name starts with `vmraycontainer`.
+- Click on `Switch to Access key`.
+
+![15a](Images/15a.png)
+
+- Upload the downloaded zip package to the container and make sure the name is not modified. 
+
+- Check on `Overwrite if files already exist`, click on `Upload`.
+
+![beta1_01](Images/beta1_01.png)
+
+- Go to `Security + networking` -> `Access keys`, Copy `Key` and save it temporarily for next steps.
+
+![17](Images/17.png)
+
+### Configuration of Function App
+
+- Open [https://portal.azure.com/](https://portal.azure.com) and search `Function App` service.
+
+![19](Images/19.png)
+
+- Open the VMRay FunctionApp name starts with `vmraydefender`.
+- Go to `Settings`->`Environment variables`, double-click `AzureStorageSasToken`.`
+- Change the Name from `AzureStorageSasToken` to `AzureStorageAccountKey` and provide the `Key` value copied in the previous step and click on `save`.
+- Click on `Apply` -> `Confirm` buttons.
+
+![beta1_02](Images/beta1_02.png)
+
+- Go to `Overview` -> click on `Restart`.
+
+![21](Images/21.png)
 
 ### Submit-Defender-Alerts-To-VMRay Logic App Installation
 
-- Please re-deploy the Logic App, following the instructions given in the document.[Submit-Defender-Alerts-To-VMRay Logic App Installation](#submit-defender-alerts-to-vmray-logic-app-installation)
+- Please re-dploy the Logic App, following the instructions given in the document.[Submit-Defender-Alerts-To-VMRay Logic App Installation](#submit-defender-alerts-to-vmray-logic-app-installation)
