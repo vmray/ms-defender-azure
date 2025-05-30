@@ -303,7 +303,7 @@ Note: This solution cannot analyze files removed by Defender. It can only analyz
 
 | Version        | Release Date | Release Notes
 |:---------------|:-------------|:---------------- |
-| 1.0.0          | `26-05-2025` | <ul><li>Removed triple alert from VMRay IOC indicators: Previously, VMRAY submitted for each malicious files three hash values. With this change it only submit the SHA256 hash value.</li><li>Removed duplicated tag: A single tag indicating Defender-AV or Defender-EDR is now used to indicates the source of the alert (instead of two more unclear tags).</li><li>Retry logic and default adjusted.</li></ul> |
+| 1.0.0          | `26-05-2025` | <ul><li>Removed triple alert from VMRay IOC indicators: Previously, VMRAY submitted for each malicious files three hash values. With this change it only submit the SHA256 hash value.</li><li>Clear tags: One tag indicates Defender-AV or Defender-EDR detected the threat. Another tag indicates the threat name seen in Defender allowing to easily map VMRay submission and Defender alerts.</li><li>Retry logic and default adjusted.</li></ul> |
 | 1.0.0-beta.2 	 | `25-03-2025` | <ul><li>Added the ability to filter the Defender Alerts by alert severity and alert status</li><li>Removed the dependency of Azure SaS Token from function app configuration</li><li>Bug Fixes</li></ul> |
 | 1.0.0-beta.1   | `07-02-2025` | Initial Release |
 
