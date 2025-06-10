@@ -4,7 +4,7 @@
 
 ## Overview
 
-This project is an integration between Microsoft Defender for Endpoint and VMRay products: Analyzer, FinalVerdict and Totalinsight. 
+This project is an integration between Microsoft Defender for Endpoint and VMRay products: Analyzer, FinalVerdict and TotalInsight. 
 The connector will collect alerts and related evidences, and query or submit these samples into VMRay Sandbox.
 It accelerates the triage of alerts by adding comments to the alert in MS Defender Console with the analysis of the sample.
 It also retrieves IOC values from VMRay and submits them into Microsoft Defender for Endpoint.
@@ -15,13 +15,13 @@ It also retrieves IOC values from VMRay and submits them into Microsoft Defender
   2. Azure function app `VMRayDefender` checks if the alert contains a file and checks if the file hash has already been analyzed by VMRay.
   3. If the hash was already analysed, the system checks if user configure to reanalyse the hash in configuration step, if yes it resubmits that to VMRay to reanalyze, if not it skips re-examining it.
   4. Azure function app `VMRayDefender` requests the file from Microsoft Defender by starting a live response session.
-  5. Microsoft Defender starts a live response session that run PowerShell code on the endpoint. The Powershell moves the files out of quarantine to a temporary folder before sending to Azure storage(vmray-defender-quarantine-files) container. 
+  5. Microsoft Defender starts a live response session that run PowerShell code on the endpoint. The PowerShell moves the files out of quarantine to a temporary folder before sending to Azure storage(vmray-defender-quarantine-files) container. 
   6. Azure function app `VMRayDefender` monitors the Azure storage(vmray-defender-quarantine-files) container and submits the quarantine file to VMRay.
   7. Azure function app `VMRayDefender` will wait till the submission is completed and When the VMRay analysis is done VMRay results are sent back to the Azure function app `VMRayDefender`.
   8. The Azure function app `VMRayDefender` post the results as a note within the relevant defender alert.
   9. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that may use them for automatically alerting or blocking.
    
-Important: This solution can only analyze files quarantined by Defender Antivirus or flagged by Defender EDR. It cannot access files that were removed or blocked outright.
+**Important**: This solution can only analyze files quarantined by Defender Antivirus or flagged by Defender EDR. It cannot access files that were removed or blocked outright.
 On the endpoint, Windows Security > Protection History shows if a threat was blocked (removed or restricted) or quarantined.
 
 To improve alert enrichment, set the remediation action to "Quarantine: Moves files to quarantine" for all threat levels via Intune or Group Policy.
@@ -97,7 +97,7 @@ Note: Some threats may still be blocked by other mechanisms (e.g., EDR in block 
 
 ![06](Images/06.png)
 
-- After setting only the necessary permisions, click the `Grant admin consent for ...` button to approve permissions.
+- After setting only the necessary permissions, click the `Grant admin consent for ...` button to approve permissions.
 
 ![07](Images/07.png)
 
@@ -234,7 +234,7 @@ Note: Some threats may still be blocked by other mechanisms (e.g., EDR in block 
 
 ![23](Images/23.png)
 
-- On the next page, choose `Authentication` as `Service prinicipal`, and provide the `ClientId`, `Client Secret` and `Tenant` values created via Entra ID app registration previously.
+- On the next page, choose `Authentication` as `Service principal`, and provide the `ClientId`, `Client Secret` and `Tenant` values created via Entra ID app registration previously.
 
 ![24](Images/24.png)
 ![25](Images/25.png)
@@ -247,7 +247,7 @@ Note: Some threats may still be blocked by other mechanisms (e.g., EDR in block 
 
 - If you would like to filter the Defender alerts based on alert severity or alert status, click on `Parameters`, and set the `DefenderAlertSeverity` and `DefenderAlertStatus` property values accordingly.
 
-- Allowed values for `DefenderAlertSeverity` parameter are listed below, kindly note all values are case-senitive
+- Allowed values for `DefenderAlertSeverity` parameter are listed below, kindly note all values are case-sensitive
 	* High
 	* Medium
 	* Low
@@ -256,7 +256,7 @@ Note: Some threats may still be blocked by other mechanisms (e.g., EDR in block 
 	
 - For example, if you want to filter the alert by "Medium" and "High" severity, you need to set the value as ["Medium","High"].
 	
-- Allowed values for `DefenderAlertStatus` parameter are listed below, kindly note all values are case-senitive
+- Allowed values for `DefenderAlertStatus` parameter are listed below, kindly note all values are case-sensitive
 	* New
 	* InProgress
 	* Resolved
