@@ -163,7 +163,7 @@
       ],
       "defaultValue": "Malicious",
       "metadata": {
-        "description": "Based linuxFxVersionon the selection, Indicators will be created in Microsoft Defender."
+        "description": "Based on the selection, Indicators will be created in Microsoft Defender."
       }
     },
     "DefenderIndicatorAction": {
@@ -221,7 +221,7 @@
       },
       "properties": {
         "maximumElasticWorkerCount": 20,
-        "reserved": "[variables('isReserved')]"
+        "reserved": true
       },
       "kind": "elastic"
     },
@@ -304,10 +304,6 @@
             {
               "name": "WEBSITE_CONTENTSHARE",
               "value": "[toLower(parameters('functionAppName'))]"
-            },
-            {
-              "name": "StorageAccount",
-              "value": "[variables('StorageAccount')]"
             },
             {
               "name": "FUNCTIONS_EXTENSION_VERSION",
