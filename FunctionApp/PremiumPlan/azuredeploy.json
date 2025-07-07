@@ -190,8 +190,7 @@
   },
   "variables": {
     "FunctionName": "[concat(toLower(parameters('functionAppName')), take(uniqueString(resourceGroup().id), 3))]",
-    "hostingPlanName": "[parameters('functionAppName')]",
-    "applicationInsightsName": "[parameters('functionAppName')]",
+    "deploymentStorageContainerName": "vmraystoragecontainer",
     "storageAccountName": "[concat('vmraystorage', take(uniqueString(resourceGroup().id), 3))]"
   },
   "resources": [
@@ -203,7 +202,7 @@
       "sku": {  
         "name": "[parameters('storageAccountType')]"
       },
-      "kind": "Storage",
+      "kind": "StorageV2",
       "properties": {
         "supportsHttpsTrafficOnly": true,
         "defaultToOAuthAuthentication": true,
@@ -213,7 +212,7 @@
     {
       "type": "Microsoft.Web/serverfarms",
       "apiVersion": "2022-03-01",
-      "name": "[variables('hostingPlanName')]",
+      "name": "[variables('FunctionName')]",
       "location": "[resourceGroup().location]",
       "sku": {
         "tier": "ElasticPremium",
@@ -286,13 +285,13 @@
       "location": "[resourceGroup().location]",
       "kind": "functionapp,linux",
       "properties": {
-        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('FunctionName'))]",
         "siteConfig": {
           "linuxFxVersion": "python|3.11",
           "appSettings": [
             {
               "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
-              "value": "[reference(resourceId('Microsoft.Insights/components', variables('applicationInsightsName')), '2015-05-01').InstrumentationKey]"
+              "value": "[reference(resourceId('Microsoft.Insights/components', variables('FunctionName')), '2015-05-01').InstrumentationKey]"
             },
             {
               "name": "AzureWebJobsStorage",
@@ -410,20 +409,20 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
-        "[resourceId('Microsoft.Insights/components', variables('applicationInsightsName'))]",
+        "[resourceId('Microsoft.Web/serverfarms', variables('FunctionName'))]",
+        "[resourceId('Microsoft.Insights/components', variables('FunctionName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
       ]
     },
     {
       "type": "Microsoft.Web/sites/extensions",
       "apiVersion": "2022-03-01",
-      "name": "[format('{0}/{1}', parameters('functionAppName'), 'zipdeploy')]",
+      "name": "[format('{0}/{1}', variables('FunctionName'), 'zipdeploy')]",
       "properties": {
         "packageUri": "https://github.com/vmray/ms-defender-azure/raw/refs/heads/main/FunctionApp/PremiumPlan/released-package.zip"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', parameters('functionAppName'))]"
+        "[resourceId('Microsoft.Web/sites', variables('FunctionName'))]"
       ]
     }
   ]
