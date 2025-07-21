@@ -1,0 +1,410 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+        "title": "Submit Microsoft Defender EDR/AV Alerts to VMRay Function App",
+        "description": "This playbook runs when a Microsoft Defender alert is generated.",
+        "prerequisites": "VMRay Defender Function App",
+        "prerequisitesDeployTemplateFile": "../FunctionApp/azuredeploy.json",
+        "postDeploymentSteps": ["None"],
+        "lastUpdateTime": "2025-02-04T00:00:00.000Z",
+        "entities": [""],
+        "tags": [""],
+        "support": {
+            "tier": "community"
+        },
+        "author": {
+            "name": "VMRay"
+        }
+    },
+  "parameters": {
+    "logicAppName": {
+      "type": "string",
+      "defaultValue": "SubmitDefenderAlertsToVMRay"
+    },
+    "appServicePlanName": {
+      "type": "string",
+      "defaultValue": "SubmitDefenderAlertsToVMRayServicePlan"
+    },
+    "FunctionAppName": {
+        "defaultValue": "VMRayDefender",
+        "type": "string",
+        "metadata": {
+            "description": "Name of the FunctionApp"
+        }
+    }
+  },
+  "variables": {
+    "workflowName": "SubmitAlertToVMRay",
+    "storageAccountName": "[toLower(concat('logicapp', uniqueString(resourceGroup().id)))]",
+    "workflowApiVersion": "2022-03-01",
+    "functionappName": "[concat(toLower(parameters('Functionappname')), take(uniqueString(resourceGroup().id), 3))]"
+
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2022-03-01",
+      "name": "[parameters('appServicePlanName')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "WS1",
+        "tier": "WorkflowStandard"
+      },
+      "properties": {
+        "maximumElasticWorkerCount": 20,
+        "reserved": true
+      },
+      "kind": "elastic"
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Standard_LRS",
+        "tier": "Standard"
+      },
+      "kind": "StorageV2",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2022-03-01",
+      "name": "[parameters('logicAppName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "functionapp,workflowapp",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "siteConfig": {
+          "appSettings": [
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2022-09-01').keys[0].value, ';EndpointSuffix=core.windows.net')]"
+            },
+            {
+              "name": "WEBSITE_RUN_FROM_PACKAGE",
+              "value": "0"
+            }
+          ]
+        },
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('appServicePlanName'))]",
+        "httpsOnly": true
+      },
+      "resources": [
+        {
+          "type": "Microsoft.Logic/workflows",
+          "apiVersion": "[variables('workflowApiVersion')]",
+          "name": "[variables('workflowName')]",
+          "dependsOn": [
+            "[resourceId('Microsoft.Web/sites', parameters('logicAppName'))]"
+          ],
+          "properties": {
+            "definition": {
+              "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+              "contentVersion": "1.0.0.0",
+              "parameters": {
+                "DefenderAlertSeverity": {
+                  "defaultValue": [
+                    "UnSpecified",
+                    "Informational",
+                    "Low",
+                    "Medium",
+                    "High"
+                  ],
+                  "type": "Array",
+                  "metadata": {
+                    "description": "Microsoft Defender for Endpoint Alert Severities used for filtering alerts"
+                  }
+                },
+                "DefenderAlertStatus": {
+                  "defaultValue": [
+                    "New",
+                    "InProgress"
+                  ],
+                  "type": "Array",
+                  "metadata": {
+                    "description": "Microsoft Defender for Endpoint Alert Statuses used for filtering alerts"
+                  }
+                },
+                "$connections": {
+                  "defaultValue": {},
+                  "type": "Object"
+                }
+              },
+              "triggers": {
+                "Triggers_-_Trigger_when_new_WDATP_alert_occurs": {
+                  "type": "ApiConnectionWebhook",
+                  "inputs": {
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['wdatp']['connectionId']"
+                      }
+                    },
+                    "body": {
+                      "clientState": "flow",
+                      "changeType": "created",
+                      "resource": "alerts",
+                      "expirationDateTime": "2038-09-20T12:00:00Z",
+                      "notificationUrl": "@listCallbackUrl()"
+                    },
+                    "path": "/subscriptions"
+                  }
+                }
+              },
+              "actions": {
+                "Defender_Alert_ID": {
+                  "runAfter": {
+                    "Set_Alert_Severity": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "defender_alert_id",
+                        "type": "string",
+                        "value": "@triggerBody()?['id']"
+                      }
+                    ]
+                  }
+                },
+                "Defender_Machine_ID": {
+                  "runAfter": {
+                    "Defender_Alert_ID": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "defender_machine_id",
+                        "type": "string",
+                        "value": "@triggerBody()?['machineId']"
+                      }
+                    ]
+                  }
+                },
+                "Alerts_-_Get_single_alert": {
+                  "runAfter": {
+                    "Defender_AntiVirus_String": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "ApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['wdatp']['connectionId']"
+                      }
+                    },
+                    "method": "get",
+                    "path": "/api/alerts/@{encodeURIComponent(variables('defender_alert_id'))}"
+                  }
+                },
+                "Defender_Alert_Source": {
+                  "runAfter": {
+                    "Defender_Machine_ID": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "defender_alert_source",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "Set_Defender_Alert_Source": {
+                  "runAfter": {
+                    "Alerts_-_Get_single_alert": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "defender_alert_source",
+                    "value": "@body('Alerts_-_Get_single_alert')?['detectionSource']"
+                  }
+                },
+                "Defender_EDR_Source_string": {
+                  "runAfter": {
+                    "Defender_Alert_Source": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "defender_edr_string",
+                        "type": "string",
+                        "value": "WindowsDefenderAtp"
+                      }
+                    ]
+                  }
+                },
+                "Defender_AntiVirus_String": {
+                  "runAfter": {
+                    "Defender_EDR_Source_string": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "defender_av_string",
+                        "type": "string",
+                        "value": "WindowsDefenderAv"
+                      }
+                    ]
+                  }
+                },
+                "Defender_Alert_Status": {
+                  "runAfter": {},
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "alert_status",
+                        "type": "array"
+                      }
+                    ]
+                  }
+                },
+                "Defender_Alert_Severity": {
+                  "runAfter": {
+                    "Set_Alert_Status": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "InitializeVariable",
+                  "inputs": {
+                    "variables": [
+                      {
+                        "name": "alert_severity",
+                        "type": "array"
+                      }
+                    ]
+                  }
+                },
+                "Check_if_the_alert_is_from_AV_or_EDR": {
+                  "actions": {
+                    "Check_Alert_Severity": {
+                      "actions": {
+                        "Call-VMRay-Function": {
+                          "limit": {
+                            "timeout": "PT5M"
+                          },
+                          "type": "Function",
+                          "inputs": {
+                            "body": {
+                              "alert": "@triggerBody()",
+                              "threat_name": "@body('Alerts_-_Get_single_alert')['threatName']",
+                              "detection_source": "@variables('defender_alert_source')",
+                              "threat_family": "@body('Alerts_-_Get_single_alert')['threatFamilyName']"
+                            },
+                            "function": {
+                              "id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Web/sites/', variables('Functionappname'), '/functions/VMRayDefender')]"
+                            },
+                            "retryPolicy": {
+                              "type": "none"
+                            }
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "and": [
+                              {
+                                "contains": [
+                                  "@variables('alert_status')",
+                                  "@body('Alerts_-_Get_single_alert')?['status']"
+                                ]
+                              },
+                              {
+                                "contains": [
+                                  "@variables('alert_severity')",
+                                  "@body('Alerts_-_Get_single_alert')?['severity']"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "type": "If"
+                    }
+                  },
+                  "runAfter": {
+                    "Set_Defender_Alert_Source": [
+                      "Succeeded"
+                    ]
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "expression": {
+                    "or": [
+                      {
+                        "equals": [
+                          "@variables('defender_alert_source')",
+                          "@variables('defender_edr_string')"
+                        ]
+                      },
+                      {
+                        "equals": [
+                          "@variables('defender_alert_source')",
+                          "@variables('defender_av_string')"
+                        ]
+                      }
+                    ]
+                  },
+                  "type": "If"
+                },
+                "Set_Alert_Status": {
+                  "runAfter": {
+                    "Defender_Alert_Status": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "alert_status",
+                    "value": "@parameters('DefenderAlertStatus')"
+                  }
+                },
+                "Set_Alert_Severity": {
+                  "runAfter": {
+                    "Defender_Alert_Severity": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "alert_severity",
+                    "value": "@parameters('DefenderAlertSeverity')"
+                  }
+                }
+              },
+              "outputs": {}
+            },
+            "kind": "Stateful"
+          }
+        }
+      ]
+    }
+  ]
+}
