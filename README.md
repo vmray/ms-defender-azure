@@ -217,6 +217,7 @@ Note: Some threats may still be blocked by other mechanisms (e.g., EDR in block 
 
 - This playbook is mandatory. The Logic App collects the Defender Alerts and sends to VMRay Function App Connector for further processing.
 
+#### Consumption Plan
 - Click on below button to deploy:
 
   [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FLogicApp%2Fazuredeploy1.json)
@@ -224,8 +225,16 @@ Note: Some threats may still be blocked by other mechanisms (e.g., EDR in block 
 - On the next page, provide the appropriate `Subscription` and `Resource group` and click on `Review & create`.
 
   **Note**: When deploying the function app if you chose a different name, please kindly provide the same name here as well.
+
+#### Standard Plan
+
+- Click on below button to deploy
+
+    [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FLogicApp%2Fpremiumazuredeploy.json)
   
-  
+  **Note**: When deploying the function app if you chose a different name, please kindly provide the same name here as well.
+
+
 ![22](Images/22.png)
 
 - Once the deployment is complete, go to newly deployed logic app, click on edit. The logic app will open in a designer mode.
