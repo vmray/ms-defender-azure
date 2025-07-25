@@ -21,11 +21,12 @@ It also retrieves IOC values from VMRay and submits them into Microsoft Defender
   8. The Azure function app `VMRayDefender` post the results as a note within the relevant defender alert.
   9. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that may use them for automatically alerting or blocking.
    
-**Important**: This solution can only analyze files quarantined by Defender Antivirus or flagged by Defender EDR. It cannot access files that were removed or blocked outright.
-On the endpoint, Windows Security > Protection History shows if a threat was blocked (removed or restricted) or quarantined.
+**Important**: This solution can only analyze files quarantined by Defender Antivirus or flagged by Defender EDR. It cannot access files that were removed or blocked outright. It also use Local Admin rights to send files from quarantine.
 
-To improve alert enrichment, set the remediation action to "Quarantine: Moves files to quarantine" for all threat levels via Intune or Group Policy.
+To improve alert enrichment:
+- set the remediation actions to "Quarantine: Moves files to quarantine" for all threat levels via Intune or Group Policy.
 Note: Some threats may still be blocked by other mechanisms (e.g., EDR in block mode, active threat blocking).
+- set “Disable Local Admin Merge” to "Enable Local Admin Merge (Default)". Alternatively, contact us for a workaround.
 
 ![solution_overview](Images/solution_overview.png)
 
