@@ -99,6 +99,7 @@
           "type": "Microsoft.Logic/workflows",
           "apiVersion": "[variables('workflowApiVersion')]",
           "name": "[variables('workflowName')]",
+          "location": "[resourceGroup().location]",
           "dependsOn": [
             "[resourceId('Microsoft.Web/sites', parameters('logicAppName'))]"
           ],
