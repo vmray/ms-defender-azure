@@ -37,7 +37,7 @@
   "variables": {
     "workflowName": "SubmitAlertToVMRay",
     "storageAccountName": "[toLower(concat('logicapp', uniqueString(resourceGroup().id)))]",
-    "workflowApiVersion": "2022-03-01",
+    "workflowApiVersion": "2019-05-01",
     "functionappName": "[concat(toLower(parameters('Functionappname')), take(uniqueString(resourceGroup().id), 3))]"
 
   },
@@ -409,3 +409,4 @@
     }
   ]
 }
+
