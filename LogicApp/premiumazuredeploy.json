@@ -4,7 +4,7 @@
   "parameters": {
     "logicAppName": {
         "type": "string",
-        "defaultValue": "SubmitDefenderAlertsToVMRayStandard"
+        "defaultValue": "SubmitDefenderAlertsToVMRay-StandardPlan"
       },
     "AzureClientID": {
       "type": "string",
@@ -240,3 +240,4 @@
       }
     }
 }
+
