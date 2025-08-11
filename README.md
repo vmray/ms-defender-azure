@@ -227,22 +227,10 @@ Note: Some threats may still be blocked by other mechanisms (e.g., EDR in block 
 
   **Note**: When deploying the function app if you chose a different name, please kindly provide the same name here as well.
 
-#### Standard Plan
-
-- Click on below button to deploy
-
-    [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FLogicApp%2Fpremiumazuredeploy.json)
-  
-  **Note**: When deploying the function app if you chose a different name, please kindly provide the same name here as well.
-
-
 ![22](Images/22.png)
 
 - Once the deployment is complete, go to newly deployed logic app, click on edit. The logic app will open in a designer mode.
-
-- Click on the `WDATP Trigger`, click on `Add new`.
-
-![23](Images/23.png)
+- ![23](Images/23.png)
 
 - On the next page, choose `Authentication` as `Service principal`, and provide the `ClientId`, `Client Secret` and `Tenant` values created via Entra ID app registration previously.
 
@@ -252,6 +240,92 @@ Note: Some threats may still be blocked by other mechanisms (e.g., EDR in block 
 - Click on `Alerts - Get single Alert` action, click on `Change connection` and select the connection created above.
 
 ![24a](Images/24a.png)
+
+
+#### Standard Plan
+
+- Click on below button to deploy
+
+    [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FLogicApp%2Fpremiumazuredeploy.json)
+  
+  > **Note:** If you use a custom name for the Function App during deployment, please ensure to use the same name in the configuration steps below.
+
+- Provide all the required details.
+
+![22_standard](Images/22_standard.png)
+
+## Post-Deployment Configuration
+
+### Step 1: Authorize the API Connection
+
+1. From the deployment page, click on the **`wdatp`** API connection.  
+   ![wdatp](Images/wdatp.png)
+
+2. Navigate to:  
+   `General → Edit API Connection`
+
+3. Click **`Authorize`**, select your account, and then click **`Save`**.  
+   ![auth](Images/auth.png)
+
+### Step 2: Complete Logic App Connections
+
+1. Go to the newly deployed Logic App.
+
+2. Navigate to:  
+   `Workflow → Connections → JSON View`
+
+3. Update the following fields:  
+   ![connection](Images/connection.png)
+
+   - `subscriptionId`
+   - `resourceGroupName`
+   - `location`
+   - `functionAppName`
+   - `functionKey`
+
+   #### Get Function App Name and Key:
+   - Go to your Function App in Azure.
+   - Click **`VMRayDefender`**  
+     ![function_app](Images/function_app.png)
+   - Open **Function Keys** and copy the key.  
+     ![key](Images/key.png)
+
+4. Click **`Save`** after updating the JSON.
+
+
+### Step 3: Configure Trigger Authentication
+
+1. Open the Logic App in **Designer mode**.
+2. Select the trigger: **`Triggers - Trigger when new WDATP alert occurs`**  
+   ![23](Images/23.png)
+
+3. Set Authentication:
+   - Type: **Service Principal**
+   - Provide:
+     - `Client ID`
+     - `Client Secret`
+     - `Tenant ID`  
+     ![24](Images/24.png)
+     ![25](Images/25.png)
+
+4. Open the **`Get single alert`** action:
+   - Click **`Change connection`**
+   - Select the previously created connection  
+     ![24a](Images/24a.png)
+
+### Step 4: Configure Function App Connection
+
+1. Scroll to the **Function App** section at the bottom of the Logic App.
+
+2. Click **`Change connection`**.  
+   ![function_connection](Images/function_connection.png)
+
+3. Select **`Add new`**, then choose your Function App.  
+   ![add_fun_con](Images/add_fun_con.png)  
+   ![create_fun_con](Images/create_fun_con.png)
+
+4. Click **`Save`** at the top of the workflow.  
+   ![save](Images/save.png)
 
 #### Filtering the Defender alerts
 
