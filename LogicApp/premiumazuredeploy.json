@@ -34,15 +34,13 @@
     "FunctionName": {
       "defaultValue": "VMRayDefender",
       "minLength": 1,
-      "maxLength": 20,
       "type": "string"
     }
   },
   "variables": {
         "storageAccountName": "[concat('vmraylogicapp', take(uniqueString(resourceGroup().id), 3))]",
         "AzureSentinelConnectionName": "[concat('azuresentinel-', parameters('logicAppName'))]",
-        "WDATPConnection": "[concat('Wdatp-', parameters('logicAppName'))]",
-        "functionappname": "[concat(toLower(parameters('FunctionName')), take(uniqueString(resourceGroup().id), 3))]"
+        "WDATPConnection": "[concat('Wdatp-', parameters('logicAppName'))]"
   },
   "resources": [
     {
@@ -129,7 +127,7 @@
               },
               {
                 "name": "azureFunctionOperation_triggerUrl",
-                "value": "[concat('https://', variables('functionAppName'), '.azurewebsites.net/api/VMRayDefender')]"
+                "value": "[concat('https://', parameters('FunctionName'), '.azurewebsites.net/api/VMRayDefender')]"
               },
               {
                 "name": "azureFunctionOperation_functionKey",
@@ -137,7 +135,7 @@
               },
               {
                 "name": "azureFunction_id",
-                "value": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Web/sites/', variables('functionAppName'), '/VMRayDefender')]"
+                "value": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Web/sites/', parameters('FunctionName'), '/VMRayDefender')]"
               },
               {
                 "name": "FUNCTIONS_WORKER_RUNTIME",
@@ -169,7 +167,7 @@
               },
               {
                 "name": "FUNCTION_APP_NAME",
-                "value": "[variables('functionappname')]"
+                "value": "[parameters('FunctionName')]"
               }
           ]
         },
@@ -240,4 +238,5 @@
       }
     }
 }
+
 
