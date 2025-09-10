@@ -124,8 +124,11 @@ It also retrieves IOC values from VMRay and submits them into Microsoft Defender
 
 ### Check Intune settings
 
-- Set the remediation actions to "Quarantine: Moves files to quarantine" for all threat levels via Intune (or Group Policy).
-- Check “Disable Local Admin Merge” setting: if set to "Enable Local Admin Merge (Default)", no change is needed. if set to “Disable Local Admin Merge”, add to your global exclusion the path: c:\temp\vmray_quarantined_files
+Set the remediation actions to "Quarantine: Moves files to quarantine" for all threat levels via Intune (or Group Policy). You need to set them separately for Antivirus and behavioral monitoring:
+- Antivirus: In Intunes, go to Endpoint security/Antivirus, open the policy, scroll down to Defender policy under configuration, check the remediation settings.
+- Behavioural monitoring: In Intunes, go to Device/configuration/ Create policy (Windows 10 and later) (settings catalog). Enter a policy name, select "add settings", search for” threat”, selected “Defender”, then select all remediation actions and close the pop up, and finally set all remediation to “quarantine”. 
+
+Check “Disable Local Admin Merge” setting in Intunes Antivirus policy: if set to "Enable Local Admin Merge (Default)", no change is needed. if set to “Disable Local Admin Merge”, add to your global exclusion the path: c:\temp\vmray_quarantined_files
   
 ## Microsoft Azure Function App Installation And Configuration
 
