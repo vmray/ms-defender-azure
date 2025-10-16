@@ -287,6 +287,7 @@
           }
         },
         "siteConfig": {
+		  "minTlsVersion": "1.2",
           "appSettings": [
             {
               "name": "FUNCTIONS_EXTENSION_VERSION",
