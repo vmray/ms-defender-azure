@@ -289,6 +289,7 @@
       "properties": {
         "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('FunctionName'))]",
         "siteConfig": {
+          "minTlsVersion": "1.2",
           "linuxFxVersion": "python|3.11",
           "appSettings": [
             {
