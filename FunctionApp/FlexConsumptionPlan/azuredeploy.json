@@ -194,9 +194,11 @@
         "name": "Standard_LRS"
       },
       "properties": {
+		"minimumTlsVersion": "TLS1_2",
         "supportsHttpsTrafficOnly": true,
         "defaultToOAuthAuthentication": true,
-        "allowBlobPublicAccess": false
+        "allowBlobPublicAccess": false,
+		"supportsHttpsTrafficOnly": true,
       }
     },
     {
