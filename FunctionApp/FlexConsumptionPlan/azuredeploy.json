@@ -198,7 +198,7 @@
         "supportsHttpsTrafficOnly": true,
         "defaultToOAuthAuthentication": true,
         "allowBlobPublicAccess": false,
-		"supportsHttpsTrafficOnly": true,
+		"supportsHttpsTrafficOnly": true
       }
     },
     {
