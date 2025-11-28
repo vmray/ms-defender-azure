@@ -67,11 +67,11 @@
         "description": "Enter the VMRay Api Key."
       }
     },
-    "VmrayResubmit": {
-      "type": "bool",
-      "defaultValue": true,
-	  "metadata": {
-        "description": "If true, the files will be resubmitted to VMRay analyser, even if the file hash was found in VMRay."
+    "VmrayResubmitAfter": {
+      "type": "int",
+      "defaultValue": 7,
+      "metadata": {
+        "description": "Resubmit when the previous analysis is older than X days. The value represents the number of days (range 0–100), where 0 means resubmit every time"
       }
     },
     "VmrayAPIRetryTimeout": {
@@ -130,6 +130,20 @@
         "description": "If true, Indicators will be created in Microsoft Defender"
       }
     },
+    "IndicatorExpirationInDays": {
+      "type": "string",
+      "defaultValue": "30",
+      "metadata": {
+        "description": "Please specify the number of days the indicator should remain valid."
+      }
+    },
+    "AddTagsToIncident": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "If true, VMRay verdict and threat names will be added to incidents."
+      }
+    },
     "VmraySampleVerdict": {
       "type": "string",
       "allowedValues": [
@@ -142,7 +156,49 @@
         "description": "Based on the selection, Indicators will be created in Microsoft Defender."
       }
     },
-    "DefenderIndicatorAction": {
+    "DefenderIndicatorActionForMaliciousIPAddressURL": {
+      "type": "string",
+      "allowedValues": [
+        "Allowed",
+        "Audit",
+        "Block",
+        "BlockAndRemediate",
+        "Warn"
+      ],
+      "defaultValue": "Audit",
+      "metadata": {
+        "description": "The action that is taken if the indicator is discovered in the organization."
+      }
+    },
+    "DefenderIndicatorActionForSuspiciousIPAddressURL": {
+      "type": "string",
+      "allowedValues": [
+        "Allowed",
+        "Audit",
+        "Block",
+        "BlockAndRemediate",
+        "Warn"
+      ],
+      "defaultValue": "Audit",
+      "metadata": {
+        "description": "The action that is taken if the indicator is discovered in the organization."
+      }
+    },
+    "DefenderIndicatorActionForMaliciousFile": {
+      "type": "string",
+      "allowedValues": [
+        "Allowed",
+        "Audit",
+        "Block",
+        "BlockAndRemediate",
+        "Warn"
+      ],
+      "defaultValue": "Audit",
+      "metadata": {
+        "description": "The action that is taken if the indicator is discovered in the organization."
+      }
+    },
+    "DefenderIndicatorActionForSuspiciousFile": {
       "type": "string",
       "allowedValues": [
         "Allowed",
@@ -317,8 +373,8 @@
               "value": "[parameters('VmrayAPIKey')]"
             },
             {
-              "name": "VmrayResubmit",
-              "value": "[parameters('VmrayResubmit')]"
+              "name": "VmrayResubmitAfter",
+              "value": "[parameters('VmrayResubmitAfter')]"
             },
             {
               "name": "VmraySampleVerdict",
@@ -377,12 +433,32 @@
               "value": "[parameters('CreateIndicatorsInDefender')]"
             },
             {
-              "name": "DefenderIndicatorAction",
-              "value": "[parameters('DefenderIndicatorAction')]"
+              "name": "IndicatorExpirationInDays",
+              "value": "[parameters('IndicatorExpirationInDays')]"
+            },
+            {
+              "name": "DefenderIndicatorActionForMaliciousIPAddressURL",
+              "value": "[parameters('DefenderIndicatorActionForMaliciousIPAddressURL')]"
+            },
+            {
+              "name": "DefenderIndicatorActionForSuspiciousIPAddressURL",
+              "value": "[parameters('DefenderIndicatorActionForSuspiciousIPAddressURL')]"
+            },
+            {
+              "name": "DefenderIndicatorActionForMaliciousFile",
+              "value": "[parameters('DefenderIndicatorActionForMaliciousFile')]"
+            },
+            {
+              "name": "DefenderIndicatorActionForSuspiciousFile",
+              "value": "[parameters('DefenderIndicatorActionForSuspiciousFile')]"
             },
             {
               "name": "DefenderIndicatorAlert",
               "value": "[parameters('DefenderIndicatorAlert')]"
+            },
+            {
+              "name": "AddTagsToIncident",
+              "value": "[parameters('AddTagsToIncident')]"
             }
           ]
         }
