@@ -53,7 +53,7 @@
     },
     "VmrayBaseURL": {
       "type": "string",
-      "defaultValue": "https://us.cloud.vmray.com",
+      "defaultValue": "",
       "minLength": 1,
 	  "metadata": {
         "description": "Enter the VMRay Base URL."
@@ -61,7 +61,7 @@
     },
     "VmrayAPIKey": {
       "type": "securestring",
-      "defaultValue": "<VMRay API Key>",
+      "defaultValue": "",
       "minLength": 1,
 	  "metadata": {
         "description": "Enter the VMRay Api Key."
@@ -165,7 +165,7 @@
         "BlockAndRemediate",
         "Warn"
       ],
-      "defaultValue": "Audit",
+      "defaultValue": "Block",
       "metadata": {
         "description": "The action that is taken if the indicator is discovered in the organization."
       }
@@ -193,7 +193,7 @@
         "BlockAndRemediate",
         "Warn"
       ],
-      "defaultValue": "Audit",
+      "defaultValue": "Block",
       "metadata": {
         "description": "The action that is taken if the indicator is discovered in the organization."
       }
