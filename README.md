@@ -81,17 +81,22 @@ It improves protection by extracting IOCs from the different stage of the attack
 ![05](Images/05.png)
 
 - On the next page, select `Application Permissions` and check the permissions according to the table below. Then, click `Add permissions` button below.
-
+### WindowsDefenderATP
 |       Category       |   Permission Name   | Description                                                            |
 |:---------------------|:--------------------|:-----------------------------------------------------------------------|
-| Alert                | Alert.Read.All      | Needed to retrieve alerts and related evidence                         |
-| Alert                | Alert.ReadWrite.All | Needed to enrich alerts with sample information                        |
+| Alert                | Alert.ReadWrite.All | Needed to retrieve and enrich alerts with sample information           |
 | Machine              | Machine.LiveResponse | Needed to gather evidences from machines                               |
 | Machine              | Machine.Read.All | Needed to retrieve information about machines                          |
-| Ti                   | Ti.Read.All | Needed to retrieve indicators                                          |
 | Ti                   | Ti.ReadWrite | Needed to retrieve and submit indicators (application specific)        |
 | Ti                   | Ti.ReadWrite.All | Needed to retrieve and submit indicators (general)                     |
 | Library              | Library.Manage | Needed to upload custom ps1 script for retrieving AV related evidences |
+
+- Follow the same steps as above to provide permission for `Microsoft Graph API`
+### Microsoft Graph
+| Category                      | Permission Name     | Description                                                           |
+|:------------------------------|:--------------------|:----------------------------------------------------------------------|
+| SecurityAlert.ReadWrite.All   | Alert.ReadWrite.All | Read and write to all security alerts                                 |
+| SecurityIncident.ReadWrite.All| Incident.ReadWrite  | Read and write to all security incidents       |
 
 ![06](Images/06.png)
 
