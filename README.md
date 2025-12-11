@@ -5,10 +5,10 @@
 ## Overview
 
 This project is an integration between Microsoft Defender for Endpoint and VMRay products: FinalVerdict and TotalInsight. 
-The connector will collect alerts and related evidences, and query or submit these samples into VMRay Sandbox.
+The connector collects alerts and related evidences, and query or submit these samples into VMRay Sandbox.
 It allows the SOC team to better understand the threat behind the alert.
 It accelerates the triage of alerts by adding comments to the alert in MS Defender Console with the analysis of the sample.
-It improves protection by extracting IOCs from the different stage of the attack and submiting as Defender indicators.
+It improves protection by extracting IOCs from the different stage of the attack and submiting them as Defender indicators.
 
 ## Solution Overview
 - The connector is built using Azure logic app, Azure functions app and Azure Storage.
@@ -16,8 +16,8 @@ It improves protection by extracting IOCs from the different stage of the attack
   2. Azure function app `VMRayDefender` checks if the alert contains a file or a URL and checks if the file hash or the URL has already been analyzed by VMRay.
   3. If the hash/URL was already analysed, the system checks the setting VmrayResubmitAfter (default 7 days). if the last submission was older than this value, it resubmits the sample to VMRay. If not it uses results from previous submission.
   4. For file, Azure function app `VMRayDefender` requests the file from Microsoft Defender by starting a live response session. For URL, it gets it directly from the alert evidence.
-  5. For File, Microsoft Defender starts a live response session that run PowerShell code on the endpoint. The PowerShell moves the files out of quarantine to a temporary folder before sending to Azure storage(vmray-defender-quarantine-files) container. 
-  6. For File, Azure function app `VMRayDefender` monitors the Azure storage(vmray-defender-quarantine-files) container and submits the quarantine file to VMRay.
+  5. For file, Microsoft Defender starts a live response session that run PowerShell code on the endpoint. The PowerShell moves the files out of quarantine to a temporary folder before sending to Azure storage(vmray-defender-quarantine-files) container. 
+  6. For file, Azure function app `VMRayDefender` monitors the Azure storage(vmray-defender-quarantine-files) container and submits the quarantine file to VMRay.
   7. Azure function app `VMRayDefender` will wait till the submission of the file or URL is completed. When the VMRay analysis is done VMRay results are sent back to the Azure function app `VMRayDefender`.
   8. The Azure function app `VMRayDefender` post the results as a note within the relevant defender alert.
   9. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that use them for automatically alerting or blocking.
