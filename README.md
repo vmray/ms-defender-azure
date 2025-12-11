@@ -4,24 +4,26 @@
 
 ## Overview
 
-This project is an integration between Microsoft Defender for Endpoint and VMRay products: Analyzer, FinalVerdict and TotalInsight. 
+This project is an integration between Microsoft Defender for Endpoint and VMRay products: FinalVerdict and TotalInsight. 
 The connector will collect alerts and related evidences, and query or submit these samples into VMRay Sandbox.
+It allows the SOC team to better understand the threat behind the alert.
 It accelerates the triage of alerts by adding comments to the alert in MS Defender Console with the analysis of the sample.
-It also retrieves IOC values from VMRay and submits them into Microsoft Defender for Endpoint.
+It improves protection by extracting IOCs from the different stage of the attack and submiting as Defender indicators.
 
 ## Solution Overview
 - The connector is built using Azure logic app, Azure functions app and Azure Storage.
   1. Azure Logic app `SubmitDefenderAlertsToVMRay` monitors the alerts from MS Defender as soon any AV/EDR alerts are generated. If any AV/EDR alert is found, it will send the alert details to the Azure function app `VMRayDefender`.
-  2. Azure function app `VMRayDefender` checks if the alert contains a file and checks if the file hash has already been analyzed by VMRay.
-  3. If the hash was already analysed, the system checks if user configure to reanalyse the hash in configuration step, if yes it resubmits that to VMRay to reanalyze, if not it skips re-examining it.
-  4. Azure function app `VMRayDefender` requests the file from Microsoft Defender by starting a live response session.
-  5. Microsoft Defender starts a live response session that run PowerShell code on the endpoint. The PowerShell moves the files out of quarantine to a temporary folder before sending to Azure storage(vmray-defender-quarantine-files) container. 
-  6. Azure function app `VMRayDefender` monitors the Azure storage(vmray-defender-quarantine-files) container and submits the quarantine file to VMRay.
-  7. Azure function app `VMRayDefender` will wait till the submission is completed and When the VMRay analysis is done VMRay results are sent back to the Azure function app `VMRayDefender`.
+  2. Azure function app `VMRayDefender` checks if the alert contains a file or a URL and checks if the file hash or the URL has already been analyzed by VMRay.
+  3. If the hash/URL was already analysed, the system checks the setting VmrayResubmitAfter (default 7 days). if the last submission was older than this value, it resubmits the sample to VMRay. If not it uses results from previous submission.
+  4. For file, Azure function app `VMRayDefender` requests the file from Microsoft Defender by starting a live response session. For URL, it gets it directly from the alert evidence.
+  5. For File, Microsoft Defender starts a live response session that run PowerShell code on the endpoint. The PowerShell moves the files out of quarantine to a temporary folder before sending to Azure storage(vmray-defender-quarantine-files) container. 
+  6. For File, Azure function app `VMRayDefender` monitors the Azure storage(vmray-defender-quarantine-files) container and submits the quarantine file to VMRay.
+  7. Azure function app `VMRayDefender` will wait till the submission of the file or URL is completed. When the VMRay analysis is done VMRay results are sent back to the Azure function app `VMRayDefender`.
   8. The Azure function app `VMRayDefender` post the results as a note within the relevant defender alert.
-  9. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that may use them for automatically alerting or blocking.
+  9. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that use them for automatically alerting or blocking.
+  10. If configured to update Defender Incident tags, it will add a tag with the most severe VMRay alert within the incident, as well as a tag with each threat name identified by VMRay.
    
-**Important**: This solution can only analyze files quarantined by Defender Antivirus or flagged by Defender EDR. It cannot access files that were removed or blocked outright. 
+**Important**: This solution can only analyze files quarantined by Defender Antivirus, flagged by Defender EDR or downloaded from a URL (child sample). It cannot access files that were removed or blocked outright. 
 
 ![solution_overview](Images/solution_overview.png)
 
