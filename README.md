@@ -56,31 +56,31 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 ### Creating Application for API Access
 
-- Open [https://portal.azure.com/](https://portal.azure.com) and search `Microsoft Entra ID` service.
+> Open [https://portal.azure.com/](https://portal.azure.com) and search `Microsoft Entra ID` service.
 
 ![01](Images/01.png)
 
-- Click `Add->App registration`.
+> Click on `Add` and select `App registration.`
 
 ![02](Images/02.png)
 
-- Enter the name of application, select supported account types, and click on `Register`.
+> Enter the name of application, select supported account types, and click on `Register`.
 
 ![03](Images/03.png)
 
-- In the application overview you can see `Application Name`, `Application ID` and `Tenant ID`.
+> In the application overview you can find `Application Name`, `Application ID` and `Tenant ID`.
 
 ![04](Images/04.png)
 
-- After creating the application, we need to set API permissions for connector. For this purpose,
-  - Click `Manage->API permissions` tab
-  - Click `Add a permission` button
-  - Select `APIs my organization uses`
-  - Search `WindowsDefenderATP` and click the search result
+> After creating the application, we need to set API permissions for connector. For this purpose,
+>  - Click `Manage > API permissions` tab.
+>  - Click `Add a permission` button.
+>  - Select `APIs my organization uses`.
+>  - Search for `WindowsDefenderATP` and click on search result.
 
 ![05](Images/05.png)
 
-- On the next page, select `Application Permissions` and check the permissions according to the table below. Then, click `Add permissions` button below.
+> On the next page, select `Application permissions` and check the permissions listed in the table below. Then click on `Add permissions`.
 ### WindowsDefenderATP
 |       Category       |   Permission Name   | Description                                                            |
 |:---------------------|:--------------------|:-----------------------------------------------------------------------|
@@ -91,7 +91,7 @@ It improves protection by extracting IOCs from the different stage of the attack
 | Ti                   | Ti.ReadWrite.All | Needed to retrieve and submit indicators (general)                     |
 | Library              | Library.Manage | Needed to upload custom ps1 script for retrieving AV related evidences |
 
-- Follow the same steps as above to provide permission for `Microsoft Graph API`
+> Follow the same steps as above to provide permission for `Microsoft Graph API`
 ### Microsoft Graph
 | Category                      | Permission Name     | Description                                                           |
 |:------------------------------|:--------------------|:----------------------------------------------------------------------|
@@ -100,19 +100,19 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 ![06](Images/06.png)
 
-- After setting only the necessary permissions, click the `Grant admin consent for ...` button to approve permissions.
+> After setting only the necessary permissions, click the `Grant admin consent for` button to approve permissions.
 
 ![07](Images/07.png)
 
-- We need secrets to access programmatically. For creating secrets
-  - Click `Manage->Certificates & secrets` tab
-  - Click `Client secrets` tab
-  - Click `New client secret` button
-  - Enter description and set expiration date for secret
+> We need secrets for programmatic access. Here's how to create them.
+> - Click `Manage > Certificates & secrets` tab.
+> - Click `Client secrets` tab.
+> - Click `New client secret` button.
+> - Enter description and set expiration date for secret.
 
 ![08](Images/08.png)
 
-- Use Secret `Value` and `Secret ID` to configure connector.
+> Use Secret `Value` and `Secret ID` to configure connector.
 
 ![09](Images/09.png)
 
@@ -122,17 +122,17 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 ### Activating Live Response and Automated Investigation
 
-- Open [https://security.microsoft.com](https://security.microsoft.com)
-- Open `Settings` page and `Endpoints` tab.
-- Open `Advanced features`.
-- Activate `Live Response`,  `Live Response for Servers` and `Live Response unsigned script execution` options.
+>- Open [https://security.microsoft.com](https://security.microsoft.com)
+>- Go to `Settings` > `Endpoints` tab.
+>- Select `Advanced features`.
+>- Enable `Live Response`,  `Live Response for Servers` and `Live Response unsigned script execution`.
 
 ![Activating Live Response](Images/10.PNG)
 
 ### Check Intune settings
 
-- Set the remediation actions to "Quarantine: Moves files to quarantine" for all threat levels via Intune (or Group Policy). In Intunes, go to Endpoint security/Antivirus, open the policy, scroll down to Defender policy under configuration, check the remediation settings.
-- Check “Disable Local Admin Merge” setting in Intunes Antivirus policy: if set to "Enable Local Admin Merge (Default)", no change is needed. if set to “Disable Local Admin Merge”, add to your global exclusion the path: c:\temp\vmray_quarantined_files
+>- Set the remediation actions to "Quarantine: Moves files to quarantine" for all threat levels via Intune (or Group Policy). In Intunes, go to Endpoint security/Antivirus, open the policy, scroll down to Defender policy under configuration, check the remediation settings.
+>- Check “Disable Local Admin Merge” setting in Intunes Antivirus policy: if set to "Enable Local Admin Merge (Default)", no change is needed. if set to “Disable Local Admin Merge”, add to your global exclusion the path: c:\temp\vmray_quarantined_files
   
 ## Microsoft Azure Function App Installation And Configuration
 
@@ -140,19 +140,19 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 #### Flex Consumption Plan
 
-- Click on below button to deploy:
+> Click on below button to deploy:
 
-  [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FFunctionApp%2FFlexConsumptionPlan%2Fazuredeploy.json)
+ [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FFunctionApp%2FFlexConsumptionPlan%2Fazuredeploy.json)
 
 #### Premium Plan
 
-- Click on below button to deploy:
+> Click on below button to deploy:
 
   [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FFunctionApp%2FPremiumPlan%2Fazuredeploy.json)
   
   
 
-- On the next page, please provide the values accordingly.
+> On the next page, please provide the values accordingly.
   
 ![13a](Images/13a.png)
 
@@ -167,7 +167,7 @@ It improves protection by extracting IOCs from the different stage of the attack
 |Azure Tenant ID | Enter the Azure Tenant ID of the App Registration                                                  |
 | Azure Storage Connection String| Please leave this empty                                                                            |
 | Azure Storage Account Key| Please leave this empty                                                                            |
-| App Insights Workspace Resource ID | Go to `Log Analytics workspace` -> `Settings` -> `Properties`, Copy `Resource ID` and paste here   |
+| App Insights Workspace Resource ID | Go to `Log Analytics workspace` > `Settings` > `Properties`, Copy `Resource ID` and paste here   |
 | Vmray Base URL | VMRay Base URL                                                                                     |
 | Vmray API Key | VMRay API Key                                                                                      |
 | Vmray Resubmit | If true, the files will be resubmitted to VMRay analyser, even if the file hash was found in VMRay |
@@ -183,39 +183,40 @@ It improves protection by extracting IOCs from the different stage of the attack
 | Defender Indicator Action | The action that is taken if the indicator is discovered in the organization                        |
 | Defender Indicator Alert | True if alert generation is required, False if this indicator shouldn't generate an alert          |
 	
-- Once you provide the above values, please click on `Review + create` button.
+> Once you enter the values, please click on `Review + create` button.
 
 ### Storage Account Keys
 
-- Open [https://portal.azure.com/](https://portal.azure.com) and search `Storage accounts` service.
+> Open [https://portal.azure.com/](https://portal.azure.com) and search `Storage accounts` service.
 
 ![14](Images/14.png)
 
-- Open the storage account, the name starts with `vmraystorage`.
-
-- Go to `Security + networking` -> `Access keys`, Copy `Connection string` and save it temporarily for next steps.
+> - Open the storage account (name starts with `vmraystorage`).
+> - Go to `Security + networking` > `Access keys`.
+> - Copy the `Connection string` and save it temporarily for the next steps.
 
 ![16](Images/16.png)
 
-- Go to `Security + networking` -> `Access keys`, Copy `Key` and save it temporarily for next steps.
+> - Go to `Security + networking` > `Access keys`.
+> - Copy the `Key` and save it temporarily for the next steps.
 
 ![17](Images/17.png)
 
 
 ### Configuration of Function App
 
-- Open [https://portal.azure.com/](https://portal.azure.com) and search `Function App` service.
+> Open [https://portal.azure.com/](https://portal.azure.com) and search `Function App` service.
 
 ![19](Images/19.png)
 
-- Open the VMRay FunctionApp name starts with `vmraydefender`.
-- Go to `Settings`->`Environment variables`, double-click `AzureStorageConnectionString` and provide the `connection string` value copied in the previous step and click on `save`.
-- Go to `Settings`->`Environment variables`, double-click `AzureStorageAccountKey` and provide the `Key` value copied in the previous step and click on `save`.
-- Click on `Apply` -> `Confirm` buttons.
+>- Open the VMRay FunctionApp name starts with `vmraydefender`.
+>- Go to `Settings` > `Environment variables`, double-click `AzureStorageConnectionString` and provide the `Connection string` value copied in the previous step and click on `save`.
+>- Go to `Settings` > `Environment variables`, double-click `AzureStorageAccountKey` and provide the `Key` value copied in the previous step and click on `save`.
+>- Click on `Apply` > `Confirm`.
 
 ![20](Images/20.png)
 
-- Go to `Overview` -> click on `Restart`.
+> Go to `Overview`, click on `Restart`.
 
 ![21](Images/21.png)
 
@@ -223,136 +224,142 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 ### Submit-Defender-Alerts-To-VMRay Logic App Installation
 
-- This playbook is mandatory. The Logic App collects the Defender Alerts and sends to VMRay Function App Connector for further processing.
+>This playbook is **required**. The Logic App collects Defender alerts and sends them to the VMRay Function App connector for further processing.
 
 #### Consumption Plan
-- Click on below button to deploy:
+> Click on below button to deploy:
 
   [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FLogicApp%2Fazuredeploy1.json)
 
-- On the next page, provide the appropriate `Subscription` and `Resource group` and click on `Review & create`.
-
-  **Note**: When deploying the function app if you chose a different name, please kindly provide the same name here as well.
+> On the next page, provide the appropriate `Subscription` and `Resource group` and click on `Review & create`.
+>  **Note**: If you chose a different name when deploying the Function App, please enter that name here.
 
 ![22](Images/22.png)
 
-- Once the deployment is complete, go to newly deployed logic app, click on edit. The logic app will open in a designer mode.
-- ![23](Images/23.png)
+> Once the deployment is complete, go to newly deployed logic app, click on `edit`. The logic app will open in a designer mode.
+ ![23](Images/23.png)
 
-- On the next page, choose `Authentication` as `Service principal`, and provide the `ClientId`, `Client Secret` and `Tenant` values created via Entra ID app registration previously.
+> On the next page, choose `Authentication` as `Service principal`, and provide the `ClientId`, `Client Secret` and `Tenant` values created via Entra ID app registration previously.
 
 ![24](Images/24.png)
 ![25](Images/25.png)
 
-- Click on `Alerts - Get single Alert` action, click on `Change connection` and select the connection created above.
+> Click on `Alerts - Get single Alert` action, click on `Change connection` and select the connection created above.
 
 ![24a](Images/24a.png)
 
 
 #### Standard Plan
 
-- Click on below button to deploy
+> Click on below button to deploy
 
-    [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FLogicApp%2Fpremiumazuredeploy.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fvmray%2Fms-defender-azure%2Frefs%2Fheads%2Fmain%2FLogicApp%2Fpremiumazuredeploy.json)
   
-  > **Note:** If you use a custom name for the Function App during deployment, please ensure to use the same name in the configuration steps below.
+  > **Note:** If you chose a different name when deploying the Function App, please enter that name here.
 
-- Provide all the required details.
+> Enter all the required values.
 
 ![22_standard](Images/22_standard.png)
 
-## Post-Deployment Configuration
+## Post-Deployment Configuration for Standard Plan
 
 ### Step 1: Authorize the API Connection
 
-1. From the deployment page, click on the **`wdatp`** API connection.  
+>From the deployment page, click on the **`wdatp`** API connection.  
+
    ![wdatp](Images/wdatp.png)
 
-2. Navigate to:  
-   `General → Edit API Connection`
+>Go to `General → Edit API Connection`
 
-3. Click **`Authorize`**, select your account, and then click **`Save`**.  
-   ![auth](Images/auth.png)
+>Click **`Authorize`**, select your account, and then click **`Save`**.  
+
+![auth](Images/auth.png)
 
 ### Step 2: Complete Logic App Connections
 
-1. Go to the newly deployed Logic App.
+>Go to the newly deployed Logic App.
 
-2. Navigate to:  
-   `Workflow → Connections → JSON View`
+> Go to `Workflow → Connections → JSON View`
 
-3. Update the following fields:  
-   ![connection](Images/connection.png)
+>Update the following fields:  
+>- `subscriptionId`
+>- `resourceGroupName`
+>- `location`
+>- `functionAppName`
+>- `functionKey`
 
-   - `subscriptionId`
-   - `resourceGroupName`
-   - `location`
-   - `functionAppName`
-   - `functionKey`
+![connection](Images/connection.png)
 
-   #### Get Function App Name and Key:
-   - Go to your Function App in Azure.
-   - Click **`VMRayDefender`**  
-     ![function_app](Images/function_app.png)
-   - Open **Function Keys** and copy the key.  
-     ![key](Images/key.png)
+#### Get Function App Name and Key:
+> Go to your Function App in Azure.
 
-4. Click **`Save`** after updating the JSON.
+> Select **`VMRayDefender`** **Note**: If you chose a different name when while deployment, select on that name.
+
+![function_app](Images/function_app.png)
+
+> Click on **Function Keys** and copy the `key` value.  
+
+![key](Images/key.png)
+
+> Click **`Save`** after updating the JSON.
 
 
 ### Step 3: Configure Trigger Authentication
 
-1. Open the Logic App in **Designer mode**.
-2. Select the trigger: **`Triggers - Trigger when new WDATP alert occurs`**  
-   ![23](Images/23.png)
+> Open the Logic App in **Designer mode**.
 
-3. Set Authentication:
-   - Type: **Service Principal**
-   - Provide:
-     - `Client ID`
-     - `Client Secret`
-     - `Tenant ID`  
-     ![24](Images/24.png)
-     ![25](Images/25.png)
+> Select the trigger; **`Triggers - Trigger when new WDATP alert occurs`**  
 
-4. Open the **`Get single alert`** action:
-   - Click **`Change connection`**
-   - Select the previously created connection  
-     ![24a](Images/24a.png)
+![23](Images/23.png)
+
+> Set Authentication:
+>  - Type: **Service Principal**
+>   - Enter values for
+>     - `Client ID`
+>     - `Client Secret`
+>     - `Tenant ID`
+
+![24](Images/24.png)
+![25](Images/25.png)
+
+> Click on **`Get single alert`** action:
+>   - Click **`Change connection`**
+>- Select the previously created connection  
+
+![24a](Images/24a.png)
 
 ### Step 4: Configure Function App Connection
 
-1. Scroll to the **Function App** section at the bottom of the Logic App.
+>Scroll to the **Function App** section at the bottom of the Logic App.
 
-2. Click **`Change connection`**.  
-   ![function_connection](Images/function_connection.png)
+>Click **`Change connection`**.  
 
-3. Select **`Add new`**, then choose your Function App.  
-   ![add_fun_con](Images/add_fun_con.png)  
-   ![create_fun_con](Images/create_fun_con.png)
+![function_connection](Images/function_connection.png)
 
-4. Click **`Save`** at the top of the workflow.  
-   ![save](Images/save.png)
+>Select **`Add new`**, then choose your Function App.  
+
+![add_fun_con](Images/add_fun_con.png)  
+![create_fun_con](Images/create_fun_con.png)
+
+> Click **`Save`** at the top of the workflow.  
+
+![save](Images/save.png)
 
 #### Filtering the Defender alerts
 
 - If you would like to filter the Defender alerts based on alert severity or alert status, click on `Parameters`, and set the `DefenderAlertSeverity` and `DefenderAlertStatus` property values accordingly.
-
 - Allowed values for `DefenderAlertSeverity` parameter are listed below, kindly note all values are case-sensitive
 	* High
 	* Medium
 	* Low
 	* Informational
-	* UnSpecified
-	
-- For example, if you want to filter the alert by "Medium" and "High" severity, you need to set the value as ["Medium","High"].
-	
+	* UnSpecified	
+- For example, if you want to filter the alert by "Medium" and "High" severity, you need to set the value as ["Medium","High"].	
 - Allowed values for `DefenderAlertStatus` parameter are listed below, kindly note all values are case-sensitive
 	* New
 	* InProgress
 	* Resolved
 	* Unknown
-
 - For example, if you want to filter the alert by "New", you need to set the value as ["New"].
 
 ![logicapp01](Images/logicapp01.png)
@@ -361,37 +368,37 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 ## Disable Microsoft Defender for VMRay Storage Account
 
-- Defender for storage will remove any malware uploaded to a Blob storage. If you are using Microsoft Defender for Storage you need to exclude the VMRay storage.
+> Defender for storage will remove any malware uploaded to a Blob storage. If you are using Microsoft Defender for Storage you need to exclude the VMRay storage.
 
 - Open [https://portal.azure.com/](https://portal.azure.com) and search `Storage accounts` service.
 
 ![14](Images/14.png)
 
 - Open the storage account, the name starts with `vmraystorage`.
-- Go to `Microsoft Defender For Cloud`->`settings`, disable the `Microsoft Defender For Storage` and click on `save`.
+- Go to `Microsoft Defender For Cloud` > `settings`, disable the `Microsoft Defender For Storage` and click on `save`.
 
 ![defender_disable](Images/defender_disable.png)
 
 ## Expected Issues With LogicApps
-- Logic App `SubmitDefenderAlertsToVMRay` runs will fail after 2 minutes. This is a expected behaviour and is not an issue.
+> Logic App `SubmitDefenderAlertsToVMRay` runs will fail after 2 minutes. This is a expected behaviour and is not an issue.
 
 ![32](Images/32.png)
 
     
 ## Debugging
 - To debug and check logs after receiving an email, follow these steps:
-  1. Navigate to the Azure Function App.
-  2. Select the function that starts with "vmraydefender".
-  3. In the Function section below, choose "VMRayDefender".
+  * Navigate to the Azure Function App.
+  * Select the function that starts with "vmraydefender".
+  * In the Function section below, choose "VMRayDefender".
      ![d1](Images/d1.png)
 
-  4. Go to the Invocation tab.
+  * Go to the Invocation tab.
      ![d2](Images/d2.png)
 
-  5. Find the execution based on the start time received in the email and match it with the invocation_id from the email.
+  * Find the execution based on the start time received in the email and match it with the invocation_id from the email.
      ![d3](Images/d3.png)
 
-  6. Review all logs under the selected execution.
+  * Review all logs under the selected execution.
      
 
 ## Version History
@@ -403,21 +410,12 @@ It improves protection by extracting IOCs from the different stage of the attack
 | 1.0.0-beta.1   | `07-02-2025` | Initial Release |
 
 
-## Steps to Update from 1.0.0-beta.2 to 1.0.0
+## Steps to Update from previous version
 
 ### Deploy Function App
-- Please re-dploy the Function App, following the instructions given in the document.[Deployment of Function App](#deployment-of-function-app)
+> Please redeploy the Function App, following the instructions given in the document.
+>- [Deployment of Function App](#deployment-of-function-app)
 
 ### Deploy Logic App
-- Please re-dploy the Logic App, following the instructions given in the document.[Submit-Defender-Alerts-To-VMRay Logic App Installation](#submit-defender-alerts-to-vmray-logic-app-installation)
-
-
-## Steps to Update from 1.0.0-beta.1 to 1.0.0-beta.2 Version 
-
-### Function App Installation
-
-- Please re-deploy the Function App, following the instructions given in the document.[Deployment of Function App](#deployment-of-function-app)
-
-### Submit-Defender-Alerts-To-VMRay Logic App Installation
-
-- Please re-deploy the Logic App, following the instructions given in the document.[Submit-Defender-Alerts-To-VMRay Logic App Installation](#submit-defender-alerts-to-vmray-logic-app-installation)
+> Please redeploy the Logic App, following the instructions given in the document.
+>- [Submit-Defender-Alerts-To-VMRay Logic App Installation](#submit-defender-alerts-to-vmray-logic-app-installation)
