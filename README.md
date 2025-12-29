@@ -168,9 +168,9 @@ It improves protection by extracting IOCs from the different stage of the attack
 | Azure Storage Connection String| Please leave this empty                                                                            |
 | Azure Storage Account Key| Please leave this empty                                                                            |
 | App Insights Workspace Resource ID | Go to `Log Analytics workspace` > `Settings` > `Properties`, Copy `Resource ID` and paste here   |
-| Vmray Base URL | VMRay Base URL                                                                                     |
+| Vmray Base URL | VMRay Base URL, either https://eu.cloud.vmray.com or https://us.cloud.vmray.com                        |
 | Vmray API Key | VMRay API Key                                                                                      |
-| Vmray Resubmit | If true, the files will be resubmitted to VMRay analyser, even if the file hash was found in VMRay |
+| Vmray Resubmit After | Resubmit when the previous analysis is older than X days. The value represents the number of days (range 0–100), where 0 means resubmit every time |
 | Vmray API Retry Timeout | Provide maximum time to wait in minutes, when VMRay API is not responding                          |
 | Vmray API Max Retry | Provide number of retries, when VMRay API is not responding                                        |
 | Vmray Analysis Job Timeout | Provide maximum time to wait in minutes, when VMRay Job submissions is not responding              |
@@ -179,9 +179,14 @@ It improves protection by extracting IOCs from the different stage of the attack
 | Machine Availability Timeout | Provide maximum time to wait in minutes, when the machine is not responding                        |
 | Machine Availability Retry | Provide number of retries, when machine is not responding                                          |
 | Create Indicators In Defender | If true, Indicators will be created in Microsoft Defender                                          |
-| Vmray Sample Verdict | Based on the selection, Indicators will be created in Microsoft Defender                           |
-| Defender Indicator Action | The action that is taken if the indicator is discovered in the organization                        |
-| Defender Indicator Alert | True if alert generation is required, False if this indicator shouldn't generate an alert          |
+| Indicator Expiration In Days |	Please specify the number of days the indicator should remain valid.             |
+| Add Tags To Incident |	If true, VMRay verdict and threat names will be added to incidents tag in Defender console. |
+| Vmray Sample Verdict | Based on the selection, Indicators will be created in Microsoft Defender                          |
+| Defender Indicator Action For Malicious IP Address URL  | The action that is taken if the indicator is Malicious URL or IP Address discovered in the organization                                            |
+| Defender Indicator Action For Suspicious IP Address URL | The action that is taken if the indicator is Suspicious URL or IP Address discovered in the organization                                           |
+| Defender Indicator Action For Malicious File            | The action that is taken if the indicator is Malicious File discovered in the organization                                                         |
+| Defender Indicator Action For Suspicious File           | The action that is taken if the indicator is Suspicious File discovered in the organization                                                        |
+| Defender Indicator Alert | True if the creation of the indicator should generate an alert, False if the creation of this indicator shouldn't generate an alert          |
 	
 > Once you enter the values, please click on `Review + create` button.
 
