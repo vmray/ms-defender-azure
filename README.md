@@ -186,7 +186,9 @@ It improves protection by extracting IOCs from the different stage of the attack
 | Defender Indicator Action For Suspicious IP Address URL | The action that is taken if the indicator is Suspicious URL or IP Address discovered in the organization.                                           |
 | Defender Indicator Action For Malicious File            | The action that is taken if the indicator is Malicious File discovered in the organization.                                                         |
 | Defender Indicator Action For Suspicious File           | The action that is taken if the indicator is Suspicious File discovered in the organization.                                                        |
-| Defender Indicator Alert | True if the creation of an indicator should generate an alert. False if the creation of an indicator shouldn't generate an alert.          |
+| Add AlertId Tags |If true, Alert ID will be added as tags to VMRay submissions.         |
+| Fetch Quarantined Files| If true, quarantined files will be pulled from host machine and uploaded to VMRay for analysis.         |
+| Filter Alert Title With | If set, only alerts with a title containing this value will be processed. Provide comma seperated values. eg., for vmray, vmray to analyze.          |
 	
 > Once you enter the values, please click on `Review + create` button.
 
