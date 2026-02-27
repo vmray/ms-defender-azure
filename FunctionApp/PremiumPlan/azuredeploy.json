@@ -242,6 +242,27 @@
       "metadata": {
         "description": "True if alert generation is required, False if this indicator shouldn't generate an alert."
       }
+    },
+    "AddAlertIdTags": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "If true, Alert ID will be added as tags to VMRay submissions."
+      }
+    },
+    "FetchQuarantinedFiles": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "If true, quarantined files will be pulled from host machine and uploaded to VMRay for analysis."
+      }
+    },
+    "FilterAlertTitleWith": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "If set, only alerts with a title containing this value will be processed. Provide comma seperated values. eg., for vmray, vmray to analyze"
+      }
     }
   },
   "variables": {
@@ -478,6 +499,18 @@
             {
               "name": "AddTagsToIncident",
               "value": "[parameters('AddTagsToIncident')]"
+            },
+            {
+              "name": "AddAlertIdTags",
+              "value": "[parameters('AddAlertIdTags')]"
+            },
+            {
+              "name": "FetchQuarantinedFiles",
+              "value": "[parameters('FetchQuarantinedFiles')]"
+            },
+            {
+              "name": "FilterAlertTitleWith",
+              "value": "[parameters('FilterAlertTitleWith')]"
             }
           ]
         }
