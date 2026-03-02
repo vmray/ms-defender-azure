@@ -1,6 +1,6 @@
 # Microsoft Defender for Endpoint Azure Connector for VMRay Advanced Malware Sandbox
 
-**Latest Version:** 1.1.0 - **Release Date: 11/12/2025** 
+**Latest Version:** 1.1.1 - **Release Date: 27/02/2026** 
 
 ## Overview
 
@@ -186,7 +186,7 @@ It improves protection by extracting IOCs from the different stage of the attack
 | Defender Indicator Action For Suspicious IP Address URL | The action that is taken if the indicator is Suspicious URL or IP Address discovered in the organization.                                           |
 | Defender Indicator Action For Malicious File            | The action that is taken if the indicator is Malicious File discovered in the organization.                                                         |
 | Defender Indicator Action For Suspicious File           | The action that is taken if the indicator is Suspicious File discovered in the organization.                                                        |
-| Add AlertId Tags |If true, Alert ID will be added as tags to VMRay submissions.         |
+| Add AlertId Tags |If true, Alert ID will be added as tags to VMRay submissions. This cannot be used before VMRay platform release 2026.2 as special character in tags are not supported before that.         |
 | Fetch Quarantined Files| If true, quarantined files will be pulled from host machine and uploaded to VMRay for analysis.         |
 | Filter Alert Title With | If set, only alerts with a title containing this value will be processed. Provide comma seperated values. eg., for vmray, vmray to analyze.          |
 	
