@@ -168,6 +168,13 @@
         "description": "If true, VMRay verdict and threat names will be added to incidents."
       }
     },
+    "AddCommentsToIncident": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "If true, VMRay enrichment comments will be appended to the parent incident of each processed alert."
+      }
+    },
     "VmraySampleVerdict": {
       "type": "string",
       "allowedValues": [
@@ -499,6 +506,10 @@
             {
               "name": "AddTagsToIncident",
               "value": "[parameters('AddTagsToIncident')]"
+            },
+            {
+              "name": "AddCommentsToIncident",
+              "value": "[parameters('AddCommentsToIncident')]"
             },
             {
               "name": "AddAlertIdTags",
