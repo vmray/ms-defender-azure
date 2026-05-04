@@ -146,7 +146,7 @@
     },
     "AddCommentsToIncident": {
       "type": "bool",
-      "defaultValue": true,
+      "defaultValue": false,
       "metadata": {
         "description": "If true, VMRay enrichment comments will be appended to the parent incident of each processed alert."
       }
@@ -228,7 +228,7 @@
     },
     "AddAlertIdTags": {
       "type": "bool",
-      "defaultValue": false,
+      "defaultValue": true,
       "metadata": {
         "description": "If true, Alert ID will be added as tags to VMRay submissions."
       }
