@@ -146,7 +146,7 @@
     },
     "AddCommentsToIncident": {
       "type": "bool",
-      "defaultValue": false,
+      "defaultValue": true,
       "metadata": {
         "description": "If true, VMRay enrichment comments will be appended to the parent incident of each processed alert."
       }
