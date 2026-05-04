@@ -1,6 +1,6 @@
 # Microsoft Defender for Endpoint Azure Connector for VMRay Advanced Malware Sandbox
 
-**Latest Version:** 1.1.1 - **Release Date: 27/02/2026** 
+**Latest Version:** 1.1.2 - **Release Date: 04/05/2026** 
 
 ## Overview
 
@@ -20,8 +20,9 @@ It improves protection by extracting IOCs from the different stage of the attack
   6. For file, Azure function app `VMRayDefender` monitors the Azure storage(vmray-defender-quarantine-files) container and submits the quarantine file to VMRay.
   7. Azure function app `VMRayDefender` will wait till the submission of the file or URL is completed. When the VMRay analysis is done VMRay results are sent back to the Azure function app `VMRayDefender`.
   8. The Azure function app `VMRayDefender` post the results as a note within the relevant defender alert.
-  9. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that use them for automatically alerting or blocking.
-  10. If configured to update Defender Incident tags, it will add a tag with the most severe VMRay alert within the incident, as well as a tag with each threat name identified by VMRay.
+  9. If configured to add comments to incident (Add Comments To Incident), the Azure function app `VMRayDefender` also appends the same VMRay enrichment as a comment on the parent Defender incident, with deduplication to avoid repeated posts across alerts of the same incident.
+  10. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that use them for automatically alerting or blocking.
+  11. If configured to update Defender Incident tags, it will add a tag with the most severe VMRay alert within the incident, as well as a tag with each threat name identified by VMRay.
    
 **Important**: This solution can only analyze files quarantined by Defender Antivirus, flagged by Defender EDR or downloaded from a URL (child sample). It cannot access files that were removed or blocked outright. 
 
@@ -181,6 +182,7 @@ It improves protection by extracting IOCs from the different stage of the attack
 | Create Indicators In Defender | If true, Indicators will be created in Microsoft Defender.                                          |
 | Indicator Expiration In Days |	Please specify the number of days the indicator should remain valid.             |
 | Add Tags To Incident |	If true, VMRay verdict and threat names will be added to incidents tag in Defender console. If you do not triage from the incident view, set it to false. |
+| Add Comments To Incident |	If true, VMRay enrichment comments will be appended to the parent incident of each processed alert. |
 | Vmray Sample Verdict | Based on the selection, Indicators will be created in Microsoft Defender.                          |
 | Defender Indicator Action For Malicious IP Address URL  | The action that is taken if the indicator is Malicious URL or IP Address discovered in the organization.                                            |
 | Defender Indicator Action For Suspicious IP Address URL | The action that is taken if the indicator is Suspicious URL or IP Address discovered in the organization.                                           |
@@ -412,6 +414,7 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 | Version        | Release Date | Release Notes
 |:---------------|:-------------|:---------------- |
+| 1.1.2          | `04-05-2026` | <ul><li>Improvement: Added option to also append VMRay enrichment comments to the parent Defender incident (controlled by `Add Comments To Incident`). Includes per-incident dedup to avoid repeated posts across multiple alerts of the same incident.</li></ul> |
 | 1.1.1          | `27-02-2026` | <ul><li>URLs are submitted faster.</li><li>Filter per alert title.</li><li>Setting to disable querying quarantine file.</li></ul> |
 | 1.1.0          | `11-12-2025` | <ul><li>URL analysis: URL included in the alert are also analyzed, as well as any potential file (Child sample) downloaded from the url.</li><li>New Configuration Options Added: Defender indicator actions can be configured separately for malicious and suspicious IOCs, an per file and IP/URL. Configurable expiration time for Defender indicators.</li><li>Incident tags: Add tags to incidents with VMRay most severe verdict and threat names</li><li>Alerts are now enriched with live response status details if errors are encountered during execution</li><li>Threat names are now sanitized by removing special characters before being included in Incident tags and Alert comments</li><li>More context to Defender indicators: link to VMRay sample and timestamp added.</li><li>VTI ordered by severity</li></ul> |
 | 1.0.0          | `26-05-2025` | <ul><li>Removed triple alert from VMRay IOC indicators: Previously, VMRAY submitted for each malicious files three hash values. With this change it only submit the SHA256 hash value.</li><li>Clear tags: One tag indicates Defender-AV or Defender-EDR detected the threat. Another tag indicates the threat name seen in Defender allowing to easily map VMRay submission and Defender alerts.</li><li>Retry logic and default adjusted.</li></ul> |
