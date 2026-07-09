@@ -193,7 +193,7 @@
           "condition": "[not(empty(parameters('logicAppName')))]",
           "type": "accessPolicies",
           "apiVersion": "2016-06-01",
-          "name": "wdatp",
+          "name": "[concat('wdatp', parameters('logicAppName'))]",
           "location": "[resourceGroup().location]",
           "dependsOn": [
             "[resourceId('Microsoft.Web/connections', 'wdatp')]"
