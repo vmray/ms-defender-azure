@@ -1,164 +1,32 @@
-# This script does not require concurrent execution.
-# It runs sequentially, as it operates through a live response command,
-# and only one live response can run at a time on the machine.
+# Encrypted-passthrough variant.
+#
+# Uploads Defender quarantine artifacts to Azure Blob Storage *as-is*, still
+# RC4-encrypted by Defender. The Azure Function decrypts server-side using
+# the published mpengine.dll key. No Defender exclusion folder is created;
+# no plaintext malware is ever written to disk on the endpoint.
+#
+# Live Response runs as NT AUTHORITY\SYSTEM, which has read access to the
+# normally SYSTEM-only directories under
+#     C:\ProgramData\Microsoft\Windows Defender\Quarantine\
+#
+# Args (passed by run_av_submission_script):
+#   $args[0]  threat_name (informational only here; used downstream)
+#   $args[1]  storage account name
+#   $args[2]  container name
+#   $args[3]  SHA-256 list joined by 'vmray' (informational; server filters)
 
-$folder_name = "vmray_quarantined_files";
-$computer_name = $env:COMPUTERNAME;
 $signedAuthorizationKey = "${SAS_TOKEN}"
 
-$folder = Join-Path -Path $env:TEMP -ChildPath $folder_name;
+$quarantineRoot   = "C:\ProgramData\Microsoft\Windows Defender\Quarantine"
+$entriesRoot      = Join-Path $quarantineRoot "Entries"
+$resourceDataRoot = Join-Path $quarantineRoot "ResourceData"
 
-function check_if_folder_exist
-{
-    if (Test-Path -Path $folder)
-    {
-        # Remove the folder and its contents
-        Remove-Item -Path $folder -Recurse -Force
-        Write-Host "Folder $folder has been deleted at the start of the script."
-    }
-    else
-    {
-        Write-Host "Folder $folder does not exist."
-    }
-}
+# Limit to artifacts touched recently. The alert that triggered this run is
+# recent, so the matching quarantine entry is too. Avoids re-uploading the
+# whole quarantine history on busy endpoints.
+$lookbackHours = 24
 
-function restore_quarantined_files
-{
-    param(
-        [string]$threatName
-    )
-    Write-Host "Restoring Quarantined Files";
-
-    New-Item -ItemType Directory -Path $folder;
-    Add-MpPreference -ExclusionPath $folder;
-
-    $maxRetries = 10
-    $retries = 0
-    $exclusionAdded = $false
-
-    while ($retries -lt $maxRetries -and !$exclusionAdded)
-    {
-        # Pausing for 12 seconds to give Windows Defender time to set the exclusion properly.
-        Write-Host "Sleeping for 12 sec";
-        Start-Sleep -Seconds 12
-        $currentExclusions = Get-MpPreference | Select-Object -ExpandProperty ExclusionPath;
-
-        if ($currentExclusions -contains $folder)
-        {
-            $exclusionAdded = $true
-            Write-Host "Folder successfully added to exclusion list."
-        }
-        else
-        {
-            Write-Host "Waiting for the folder to be added to the exclusion list..."
-            Start-Sleep -Seconds 1
-            $retries++
-        }
-    }
-
-    if (-not $exclusionAdded)
-    {
-        Write-Host "Failed to add folder to exclusion list after $maxRetries attempts. Exiting."
-        return
-    }
-
-    $mpCmdPath = "C:\Program Files\Windows Defender\MpCmdRun.exe"
-    if (-not (Test-Path $mpCmdPath))
-    {
-        Write-Host "Windows Defender MpCmdRun.exe not found. Skipping file restoration."
-        return
-    }
-    if ($threatName -ne "None")
-    {
-        Write-Host "Restoring quarantined file with name: $threatName"
-
-        & "$mpCmdPath" -Restore -Name $threatName -All -Path $folder
-    }
-    else
-    {
-        & "$mpCmdPath" -Restore -All -Path $folder;
-    }
-
-}
-
-function remove_quarantined_files
-{
-    Write-Host "Removing Quarantined Files";
-
-    Remove-Item -LiteralPath $folder -Force -Recurse;
-    Remove-MpPreference -ExclusionPath $folder;
-}
-
-function submit_sample_to_ms_blob
-{
-    param(
-        [string]$accountName,
-        [string]$containerName,
-        [string]$evidences
-    )
-
-    if (-not $accountName)
-    {
-        Write-Error "AccountName missing."
-        return
-    }
-
-    $files = Get-ChildItem -Path $folder
-    if ($files.Count -gt 0)
-    {
-        Write-Host "QuarantinedFilesFound"
-        Write-Host "Count $( $files.Count )"
-    }
-    else
-    {
-        Write-Host "No Quarantined Files Found"
-        return
-    }
-    $evidence_list = $evidences -split "vmray"
-    Write-Host "evidence $evidence_list"
-
-    $processedHashes = @{ }
-
-    foreach ($file in $files)
-    {
-        $blobName = $file.Name
-        $filePath = Join-Path -Path $folder -ChildPath $blobName
-
-        try
-        {
-            $file_hash = (certutil -hashfile $filePath SHA256 | Select-Object -Skip 1 | Select-Object -First 1).Trim().ToLower()
-            Write-Host "File Hash $file_hash"
-        }
-        catch
-        {
-            Write-Error "Error calculating hash for file $filePath. Skipping..."
-            continue
-        }
-
-        if ( $processedHashes.ContainsKey($file_hash))
-        {
-            Write-Host "File with hash $file_hash already processed. Skipping..."
-            continue
-        }
-
-        if ($file_hash -and ($file_hash -in $evidence_list))
-        {
-            $processedHashes[$file_hash] = $true
-            Upload-BlobToAzure -accountName $accountName -containerName $containerName -blobName $blobName -filePath $filePath
-        }
-        else
-        {
-            Write-Host "File $filePath does not match any evidence hash. Skipping upload."
-        }
-    }
-    if (($files.Count -gt 0) -and ($processedHashes.Keys.Count -eq 0))
-    {
-        Write-Host "NoMatchFound"
-    }
-}
-
-
-function Upload-BlobToAzure
+function Upload-Blob
 {
     param(
         [string]$accountName,
@@ -166,26 +34,83 @@ function Upload-BlobToAzure
         [string]$blobName,
         [string]$filePath
     )
-
-    Write-Host "Uploading $blobName to container $containerName..."
     $blobUrl = "https://$accountName.blob.core.windows.net/$containerName/$blobName$signedAuthorizationKey"
-
-    $headers = @{
-        "x-ms-blob-type" = "BlockBlob"
-    }
+    $headers = @{ "x-ms-blob-type" = "BlockBlob" }
     try
     {
-    	$fileContent = [System.IO.File]::ReadAllBytes($filePath)
+        $fileContent = [System.IO.File]::ReadAllBytes($filePath)
         Invoke-RestMethod -Uri $blobUrl -Method Put -Headers $headers -Body $fileContent -ContentType "application/octet-stream"
-        Write-Host "Uploaded $blobName successfully."
+        return $true
     }
     catch
     {
-        Write-Error "Failed to upload $blobName : $_"
+        Write-Host "Failed to upload $blobName : $_"
+        return $false
     }
 }
 
-check_if_folder_exist
-restore_quarantined_files -threatName $args[0]
-submit_sample_to_ms_blob -accountName $args[1] -containerName $args[2] -evidences $args[3]
-remove_quarantined_files
+function Submit-EncryptedQuarantine
+{
+    param(
+        [string]$accountName,
+        [string]$containerName,
+        [string]$evidences
+    )
+
+    if (-not (Test-Path $quarantineRoot))
+    {
+        Write-Host "No Quarantined Files Found"
+        return
+    }
+
+    # Per-run prefix so the Function App can find this batch and so concurrent
+    # runs on different endpoints don't collide in the shared container.
+    $sessionId = "$([Environment]::MachineName)/$(Get-Date -Format 'yyyyMMddHHmmss')-$([Guid]::NewGuid().ToString('N').Substring(0,8))"
+    $cutoff    = (Get-Date).AddHours(-$lookbackHours)
+
+    Write-Host "SessionId: $sessionId"
+    Write-Host "EvidenceHashes: $evidences"
+
+    $entriesUploaded   = 0
+    $resourcesUploaded = 0
+
+    if (Test-Path $entriesRoot)
+    {
+        Get-ChildItem -Path $entriesRoot -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $cutoff } |
+            ForEach-Object {
+                $blob = "$sessionId/Entries/$($_.Name)"
+                if (Upload-Blob -accountName $accountName -containerName $containerName -blobName $blob -filePath $_.FullName)
+                {
+                    $entriesUploaded++
+                }
+            }
+    }
+
+    if (Test-Path $resourceDataRoot)
+    {
+        Get-ChildItem -Path $resourceDataRoot -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $cutoff } |
+            ForEach-Object {
+                $rel  = $_.FullName.Substring($resourceDataRoot.Length).TrimStart('\').Replace('\','/')
+                $blob = "$sessionId/ResourceData/$rel"
+                if (Upload-Blob -accountName $accountName -containerName $containerName -blobName $blob -filePath $_.FullName)
+                {
+                    $resourcesUploaded++
+                }
+            }
+    }
+
+    if ($entriesUploaded -eq 0 -and $resourcesUploaded -eq 0)
+    {
+        # No recent quarantine artifacts. Don't emit QuarantinedFilesFound; the
+        # Function App's existing retry loop will wait and re-invoke us.
+        Write-Host "No Quarantined Files Found"
+        return
+    }
+
+    Write-Host "QuarantinedFilesFound"
+    Write-Host "EntriesUploaded: $entriesUploaded  ResourcesUploaded: $resourcesUploaded"
+}
+
+Submit-EncryptedQuarantine -accountName $args[1] -containerName $args[2] -evidences $args[3]
