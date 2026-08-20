@@ -9,6 +9,8 @@ from json import loads
 from enum import Enum
 from dataclasses import dataclass, field
 
+REMOVE_SPECIAL_CHAR = r'[^A-Za-z0-9.]'
+
 
 def str_to_bool(value: str) -> bool:
     """
@@ -23,6 +25,8 @@ AlertConfig = namedtuple(
         "SEVERITIES",
         "STATUSES",
         "EVIDENCE_ENTITY_TYPES",
+        "EVIDENCE_FILE_TYPE",
+        "EVIDENCE_URL_TYPE",
         "MAX_ALERT_COUNT",
         "WINDOWS_DEFENDER_ATP",
         "WINDOWS_DEFENDER_AV",
@@ -39,7 +43,11 @@ IndicatorConfig = namedtuple(
     "IndicatorConfig",
     [
         "ACTIVE",
-        "ACTION",
+        "DEFENDER_INDICATOR_ACTION_FOR_MALICIOUS_IP_URL",
+        "DEFENDER_INDICATOR_ACTION_FOR_SUSPICIOUS_IP_URL",
+        "DEFENDER_INDICATOR_ACTION_FOR_MALICIOUS_FILE",
+        "DEFENDER_INDICATOR_ACTION_FOR_SUSPICIOUS_FILE",
+        "INDICATOREXPIRATION",
         "INDICATOR_ALERT",
         "TITLE",
         "DESCRIPTION",
@@ -77,10 +85,13 @@ class VMRayConfig:
     API_KEY: str
     URL: str
     ANALYSIS_JOB_TIMEOUT: int
-    RESUBMIT: bool
+    RESUBMIT: int
     VMRay_API_RETRIES: int
     VMRay_API_TIMEOUT: int
-    CONNECTOR_NAME: str = "MicrosoftDefenderForEndpointConnectorAzureFunction-Beta"
+    VMRAY_INCIDENT_TAGS: bool
+    VMRAY_INCIDENT_COMMENTS: bool = False
+    ALERT_ID_TAGS: bool = False
+    CONNECTOR_NAME: str = "MDEConnector"
     API_KEY_TYPE: str = "REPORT"
     SSL_VERIFY: bool = True
     SUBMISSION_COMMENT: str = (
@@ -96,9 +107,12 @@ VMRay_CONFIG = VMRayConfig(
     API_KEY=environ.get("VmrayAPIKey"),
     URL=environ.get("VmrayBaseURL"),
     ANALYSIS_JOB_TIMEOUT=int(environ.get("VmrayAnalysisJobTimeout", 30)) * 60,
-    RESUBMIT=str_to_bool(environ.get("VmrayResubmit", "True")),
+    RESUBMIT=environ.get("VmrayResubmitAfter", 7),
     VMRay_API_RETRIES=int(environ.get("VmrayApiMaxRetry", 5)),
     VMRay_API_TIMEOUT=int(environ.get("VmrayAPIRetryTimeout", 5)) * 60,
+    VMRAY_INCIDENT_TAGS=str_to_bool(environ.get("AddTagsToIncident")),
+    VMRAY_INCIDENT_COMMENTS=str_to_bool(environ.get("AddCommentsToIncident", "False")),
+    ALERT_ID_TAGS=str_to_bool(environ.get("AddAlertIdTags", "False")),
 )
 
 
@@ -137,10 +151,14 @@ class APIConfig:
     DEFENDER_API_TIMEOUT: int
     DEFENDER_API_RETRY: int
     AUTH_URL: str
+    FETCH_QUARANTINED_FILES: bool
+    FILTER_ALERT_TITLE_WITH: list[str] = field( default_factory=lambda: [ title.strip().lower() for title in environ.get("FilterAlertTitleWith", "").split(",") if title.strip()])
     APPLICATION_NAME: str = "VMRayDefenderFoEndpointConnectorApp"
     RESOURCE_APPLICATION_ID_URI: str = "https://api.securitycenter.microsoft.com"
+    SOURCE_GRAPH_API: str = "https://graph.microsoft.com/.default"
+    SECURITY_GRAPH_API: str = "https://graph.microsoft.com/v1.0/security"
     URL: str = "https://api.securitycenter.microsoft.com"
-    USER_AGENT: str = "MdePartner-VMRay-VMRayAnalyzer-AzureFunctionApp/4.4.1"
+    USER_AGENT: str = "MDEConnector"
     CONTAINER_NAME: str = "vmray-defender-quarantine-files"
     ALERT_STATUS_CONTAINER_NAME: str = "vmray-defender-functionapp-status"
 
@@ -155,13 +173,16 @@ DEFENDER_API = APIConfig(
     DEFENDER_API_TIMEOUT=int(environ.get("DefenderApiRetryTimeout", 5)) * 60,
     DEFENDER_API_RETRY=int(environ.get("DefenderApiMaxRetry", 5)),
     AUTH_URL=f"https://login.microsoftonline.com/{environ.get('AzureTenantID', '')}/oauth2/token",
+    FETCH_QUARANTINED_FILES=str_to_bool(environ.get("FetchQuarantinedFiles", "True")),
 )
 
 
 ALERT = AlertConfig(
     SEVERITIES=["Unspecified", "Informational", "Low", "Medium", "High"],
     STATUSES=["Unknown", "New", "InProgress", "Resolved"],
-    EVIDENCE_ENTITY_TYPES=["File"],
+    EVIDENCE_ENTITY_TYPES=["File", "Url"],
+    EVIDENCE_FILE_TYPE="File",
+    EVIDENCE_URL_TYPE="Url",
     MAX_ALERT_COUNT=10000,
     WINDOWS_DEFENDER_ATP="WindowsDefenderAtp",
     WINDOWS_DEFENDER_AV="WindowsDefenderAv",
@@ -180,10 +201,22 @@ MACHINE_ACTION = MachineActionConfig(
 
 INDICATOR = IndicatorConfig(
     ACTIVE=str_to_bool(environ.get("CreateIndicatorsInDefender", "True")),
-    ACTION=environ.get("DefenderIndicatorAction"),
+    DEFENDER_INDICATOR_ACTION_FOR_MALICIOUS_IP_URL=environ.get(
+        "DefenderIndicatorActionForMaliciousIPAddressURL"
+    ),
+    DEFENDER_INDICATOR_ACTION_FOR_SUSPICIOUS_IP_URL=environ.get(
+        "DefenderIndicatorActionForSuspiciousIPAddressURL"
+    ),
+    DEFENDER_INDICATOR_ACTION_FOR_MALICIOUS_FILE=environ.get(
+        "DefenderIndicatorActionForMaliciousFile"
+    ),
+    DEFENDER_INDICATOR_ACTION_FOR_SUSPICIOUS_FILE=environ.get(
+        "DefenderIndicatorActionForSuspiciousFile"
+    ),
+    INDICATOREXPIRATION=environ.get("IndicatorExpirationInDays"),
     INDICATOR_ALERT=str_to_bool(environ.get("DefenderIndicatorAlert", "False")),
-    TITLE="Indicator based on VMRay Analyzer Report",
-    DESCRIPTION="Indicator based on VMRay Analyzer Report",
+    TITLE="VMRay indicator",
+    DESCRIPTION="VMRay indicator",
     MAX_TI_INDICATORS_PER_REQUEST=500,
 )
 
@@ -247,3 +280,5 @@ MS_DEFENDER_SEVERITY_MAPPING = {
 
 RETRY_STATUS_CODE = [500, 501, 502, 503, 504, 429]
 AUTH_ERROR_STATUS_CODE = 401
+
+

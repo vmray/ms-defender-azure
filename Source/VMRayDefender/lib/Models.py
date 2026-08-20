@@ -2,7 +2,7 @@
 
 from base64 import b64encode
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 from ..const import MS_DEFENDER_SEVERITY_MAPPING
 
@@ -33,8 +33,15 @@ class Evidence:
     file_name: str
     file_path: str
     alert_id: str
+    incident_id: str
     machine_id: str
     detection_source: str
+    url: str
+    entity_type: str
+    sample_id: str = ""
+    debug_details: str = ""
+    vmray_sample: dict = field(default_factory=dict)
+    downloaded_file_data: Optional[bytes] = None
     live_response: LiveResponse = field(default_factory=LiveResponse)
     comments: set[str] = field(default_factory=set)
     submissions: list = field(default_factory=list)
@@ -130,3 +137,4 @@ class Indicator:
             "expirationTime": self.expirationTime,
             "generateAlert": self.generate_alert,
         }
+
