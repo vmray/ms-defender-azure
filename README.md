@@ -1,6 +1,6 @@
 # Microsoft Defender for Endpoint Azure Connector for VMRay Advanced Malware Sandbox
 
-**Latest Version:** 1.1.2 - **Release Date: 04/05/2026** 
+**Latest Version:** 1.1.3 - **Release Date: 20/08/2026** 
 
 ## Table of Contents
 - [Overview](#overview)
@@ -467,6 +467,7 @@ In the VMRay Console, create a Connector API key:
 
 | Version        | Release Date | Release Notes
 |:---------------|:-------------|:---------------- |
+| 1.1.3          | `20-08-2026` | <ul><li>Quarantined files are now uploaded to Azure Storage in their original encrypted form and decrypted server-side in the Function App, instead of being restored to a temporary folder on the endpoint. No Defender exclusion path is required for this anymore.</li><li>Fixed Logic App (Standard plan) deployment failure caused by a static access policy name colliding with its parent connection.</li><li>Updated the Logic App template's Node version.</li></ul> |
 | 1.1.2          | `04-05-2026` | <ul><li>Improvement: Added option to also append VMRay enrichment comments to the parent Defender incident (controlled by `Add Comments To Incident`). Includes per-incident dedup to avoid repeated posts across multiple alerts of the same incident.</li></ul> |
 | 1.1.1          | `27-02-2026` | <ul><li>URLs are submitted faster.</li><li>Filter per alert title.</li><li>Setting to disable querying quarantine file.</li></ul> |
 | 1.1.0          | `11-12-2025` | <ul><li>URL analysis: URL included in the alert are also analyzed, as well as any potential file (Child sample) downloaded from the url.</li><li>New Configuration Options Added: Defender indicator actions can be configured separately for malicious and suspicious IOCs, an per file and IP/URL. Configurable expiration time for Defender indicators.</li><li>Incident tags: Add tags to incidents with VMRay most severe verdict and threat names</li><li>Alerts are now enriched with live response status details if errors are encountered during execution</li><li>Threat names are now sanitized by removing special characters before being included in Incident tags and Alert comments</li><li>More context to Defender indicators: link to VMRay sample and timestamp added.</li><li>VTI ordered by severity</li></ul> |
