@@ -1,6 +1,6 @@
 # Microsoft Defender for Endpoint Azure Connector for VMRay Advanced Malware Sandbox
 
-**Latest Version:** 1.1.3 - **Release Date: 20/08/2026** 
+**Latest Version:** 1.1.4 - **Release Date: 25/08/2026** 
 
 ## Table of Contents
 - [Overview](#overview)
@@ -467,6 +467,7 @@ In the VMRay Console, create a Connector API key:
 
 | Version        | Release Date | Release Notes
 |:---------------|:-------------|:---------------- |
+| 1.1.4          | `25-08-2026` | <ul><li>Alert details are now retrieved through the Microsoft Graph `alerts_v2` API, and alert comments are added through Graph instead of the legacy Defender alerts API.</li></ul> |
 | 1.1.3          | `20-08-2026` | <ul><li>Quarantined files are now uploaded to Azure Storage in their original encrypted form and decrypted server-side in the Function App, instead of being restored to a temporary folder on the endpoint. No Defender exclusion path is required for this anymore.</li><li>Fixed Logic App (Standard plan) deployment failure caused by a static access policy name colliding with its parent connection.</li><li>Updated the Logic App template's Node version.</li></ul> |
 | 1.1.2          | `04-05-2026` | <ul><li>Improvement: Added option to also append VMRay enrichment comments to the parent Defender incident (controlled by `Add Comments To Incident`). Includes per-incident dedup to avoid repeated posts across multiple alerts of the same incident.</li></ul> |
 | 1.1.1          | `27-02-2026` | <ul><li>URLs are submitted faster.</li><li>Filter per alert title.</li><li>Setting to disable querying quarantine file.</li></ul> |
