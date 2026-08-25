@@ -7,6 +7,8 @@ import traceback
 from hashlib import sha256
 from io import BytesIO
 from json import dumps
+from datetime import datetime, timedelta, timezone
+import re
 
 import azure.functions as func
 from azure.storage.blob import BlobServiceClient
@@ -20,9 +22,11 @@ from .const import (
     EDREnrichment,
     IngestionConfig,
     VMRay_CONFIG,
+    REMOVE_SPECIAL_CHAR
 )
 from .lib.MicrosoftDefender import MicrosoftDefender
 from .lib.Models import Machine
+from .lib.QuarantineDecrypt import recover_original_file
 from .lib.VMRay import VMRay
 
 
@@ -69,39 +73,80 @@ def update_evidence_machine_ids(machines):
 
 def list_all_blob(machines):
     """
-    List all file(blob) uploaded by powershell scripts during the AV alerts,
-    returns list of file object and delete the blob from container.
-    :param machines: Machine object
+    Read encrypted Defender quarantine artifacts uploaded by the AV PowerShell
+    script, decrypt each ResourceData blob with the published mpengine RC4 key,
+    keep only the samples whose recovered SHA-256 matches an evidence hash the
+    alert actually asked about, and delete every blob touched.
+    :param machines: list of Machine objects (av_evidences carries the wanted hashes)
+    :return: list of {sha256: BytesIO} dicts, same shape as before
     """
     file_objects = []
+    expected_hashes = {
+        evidence.sha256.lower()
+        for machine in machines
+        if machine.run_script_live_response_finished
+        for evidence in machine.av_evidences.values()
+    }
+
+    if not expected_hashes:
+        return file_objects
+
+    # Multiple Defender quarantine entries can hold the same file (re-detections,
+    # archive children, etc.). Submit each unique hash only once so VMRay isn't
+    # called 9x for one alert — matches the old script's per-hash dedup on the
+    # endpoint.
+    seen_hashes = set()
+
     try:
-        for machine in machines:
-            if not machine.run_script_live_response_finished:
-                continue
+        blob_service_client = BlobServiceClient.from_connection_string(
+            DEFENDER_API.CONNECTION_STRING
+        )
+        container_client = blob_service_client.get_container_client(
+            DEFENDER_API.CONTAINER_NAME
+        )
 
-            blob_service_client = BlobServiceClient.from_connection_string(
-                DEFENDER_API.CONNECTION_STRING
-            )
-            container_client = blob_service_client.get_container_client(
-                DEFENDER_API.CONTAINER_NAME
-            )
-            blobs = container_client.list_blobs()
-
-            for blob in blobs:
+        for blob in container_client.list_blobs():
+            blob_name = blob.name
+            try:
                 blob_data = (
-                    container_client.get_blob_client(blob.name)
+                    container_client.get_blob_client(blob_name)
                     .download_blob()
                     .readall()
                 )
-                sha256_hash = sha256(blob_data).hexdigest()
-                file_obj = BytesIO(blob_data)
-                file_obj.name = blob.name
+
+                # Entries blobs are metadata only; the malware bytes live in
+                # ResourceData. Skip Entries (and anything else) but still
+                # delete so the container drains.
+                if "/ResourceData/" not in blob_name:
+                    continue
+
+                original_bytes = recover_original_file(blob_data)
+                sha256_hash = sha256(original_bytes).hexdigest().lower()
+
+                if sha256_hash not in expected_hashes:
+                    # Recent quarantine entry the alert isn't asking about.
+                    continue
+
+                if sha256_hash in seen_hashes:
+                    # Same content already collected from another blob.
+                    continue
+                seen_hashes.add(sha256_hash)
+
+                file_obj = BytesIO(original_bytes)
+                file_obj.name = blob_name
                 file_objects.append({sha256_hash: file_obj})
-                container_client.delete_blob(blob.name)
-        log.info("Fetched %d blobs", len(file_objects))
+            except Exception as ex:
+                log.warning("Failed to process blob %s: %s", blob_name, ex)
+            finally:
+                container_client.delete_blob(blob_name)
+
+        log.info(
+            "Recovered %d sample(s) matching alert hashes from quarantine blobs",
+            len(file_objects),
+        )
 
     except Exception as ex:
-        log.error("Error getting blobs: %s", ex)
+        log.error("Error processing quarantine blobs: %s", ex)
 
     return file_objects
 
@@ -117,52 +162,67 @@ def run(alert, threat_name, detection_source, threat_family):
     ms_defender = MicrosoftDefender(log)
     vmray = VMRay(log)
 
-    found_evidences, download_evidences, resubmit_evidences = {}, {}, {}
+    found_evidences, download_file_evidences, resubmit_file_evidences = {}, {}, {}
+    download_url_evidences, resubmit_url_evidences = {}, {}
+    submissions = []
 
     evidences = ms_defender.get_evidences(alert.get("id"))
 
-    for sha256_hash in evidences:
-        sample = vmray.get_sample(sha256_hash)
+    for key, evidence in evidences.items():
+        if evidence.entity_type == ALERT.EVIDENCE_URL_TYPE:
+            existing_sub = vmray.get_submission_by_query(key)
+            if len(existing_sub) > 0:
+                sample_id = existing_sub[0].get("submission_sample_id")
+                sample = vmray.get_sample(sample_id, True)
+            else:
+                sample = ""
+        else:
+            sample = vmray.get_sample(key)
         if sample:
             evidence_metadata = vmray.parse_sample_data(sample)
+            submission_data = vmray.get_sample_submissions(evidence_metadata)
+            evidence.sample_id = evidence_metadata["sample_id"]
+            resubmit = sample_age(
+                submission_data[0]["submission_created"], VMRay_CONFIG.RESUBMIT
+            )
             if (
-                VMRay_CONFIG.RESUBMIT
+                resubmit
                 and evidence_metadata["sample_verdict"]
                 in VMRay_CONFIG.RESUBMISSION_VERDICTS
             ):
-                log.info("File %s found in VMRay, will be resubmitted.", sha256_hash)
-                evidences[sha256_hash].need_to_submit = True
-                resubmit_evidences[sha256_hash] = evidences[sha256_hash]
+                log.info(
+                    "Resubmit is set to true, %s will be resubmitted to VMRay for analysis.",
+                    key,
+                )
+                if evidence.entity_type == ALERT.EVIDENCE_FILE_TYPE:
+                    resubmit_file_evidences[key] = evidence
+                elif evidence.entity_type == ALERT.EVIDENCE_URL_TYPE:
+                    resubmit_url_evidences[key] = evidence
             else:
                 log.info(
-                    "File %s found in VMRay. No need to submit again.", sha256_hash
+                    "Resubmit is set to False. No need to submit again."
                 )
-                evidences[sha256_hash].vmray_sample = sample
-                found_evidences[sha256_hash] = evidences[sha256_hash]
+                evidences[key].vmray_sample = sample
+                found_evidences[key] = evidences[key]
         else:
-            evidences[sha256_hash].need_to_submit = True
-            download_evidences[sha256_hash] = evidences[sha256_hash]
+            log.info("sample results for %s does not exist in VMRay.", key)
+            log.info(
+                "%s will be downloaded and submitted to VMRay for analysis.", key
+            )
+            if evidence.entity_type == ALERT.EVIDENCE_FILE_TYPE:
+                download_file_evidences[key] = evidence
+            elif evidence.entity_type == ALERT.EVIDENCE_URL_TYPE:
+                download_url_evidences[key] = evidence
 
     if found_evidences:
         log.info("%d evidences found on VMRay", len(found_evidences))
-    if resubmit_evidences:
-        log.info("%d evidences will be resubmitted.", len(resubmit_evidences))
-
-    download_evidences.update(resubmit_evidences)
-
-    if download_evidences:
-        log.info(
-            "%d evidences need to be downloaded and submitted.", len(download_evidences)
-        )
-
-    if not VMRay_CONFIG.RESUBMIT:
         for evidence in found_evidences.values():
             sample_data = vmray.parse_sample_data(evidence.vmray_sample)
             if sample_data["sample_verdict"] in GENERAL_CONFIG.SELECTED_VERDICTS:
                 child_sample_id = vmray.get_child_samples(sample_data)
                 if INDICATOR.ACTIVE:
                     indicator_objects = process_indicators(
-                        vmray, ms_defender, child_sample_id, alert.get("id")
+                        vmray, ms_defender, child_sample_id, evidence
                     )
                     if indicator_objects:
                         ms_defender.submit_indicators(indicator_objects)
@@ -171,30 +231,153 @@ def run(alert, threat_name, detection_source, threat_family):
                 if AVEnrichment.ACTIVE.value or EDREnrichment.ACTIVE.value:
                     enrich_alerts(vmray, ms_defender, evidence, child_sample_id)
 
+    download_file_evidences.update(resubmit_file_evidences)
+    download_url_evidences.update(resubmit_url_evidences)
+
+    if download_url_evidences:
+        log.info("Alert evidence type URLs are being processed..")
+        submissions = process_url(download_url_evidences, vmray, threat_family)
+        process_submissions(vmray, ms_defender, submissions, alert.get("id"), True)
+        
+
+    if download_file_evidences:
+        submissions = process_file(
+            download_file_evidences,
+            detection_source,
+            threat_name,
+            ms_defender,
+            vmray,
+            threat_family,
+            alert.get("id")
+        )
+        process_submissions(vmray, ms_defender, submissions, alert.get("id"), True)
+    if VMRay_CONFIG.VMRAY_INCIDENT_TAGS:
+        process_incident(evidences, vmray, ms_defender)
+
+
+def sample_age(created_date: str, resubmit_after: str):
+    """
+    Function to calculate sample submission time period
+    """
+    if resubmit_after == 0:
+        return True
+
+    sample_created = datetime.fromisoformat(created_date)
+    if sample_created.tzinfo is None:
+        sample_created = sample_created.replace(tzinfo=timezone.utc)
+    current_date = datetime.now(timezone.utc)
+    last_submission = current_date - sample_created
+    return last_submission >= timedelta(days=int(resubmit_after))
+
+def process_incident(evidences, vmray, ms_defender):
+    """ """
+    incident_dict = {}
+    for _, evidence in evidences.items():
+        if evidence.sample_id:
+            incident_dict.setdefault(evidence.incident_id, set()).add(evidence.sample_id)
+    log.info(f"{incident_dict} will be processed for incident tagging.")
+    for inc_id, sample_ids in incident_dict.items():
+        log.info(f"Processing incident {inc_id} for samples {sample_ids}")
+        # found_malicious = False
+        # found_suspicious = False
+        threat_families = []
+        tags = []
+        verdicts = []
+        child_sample_objects = []
+        for s_id in sample_ids:
+            sample_data = vmray.get_sample(s_id, True)
+            if sample_data:
+                sample_data = vmray.parse_sample_data(sample_data)
+
+                #sample child threat names
+                child_samples = vmray.get_child_samples(sample_data)
+                for child_id in child_samples:
+                    child_sample = vmray.get_sample(child_id, True)
+                    child_sample_parsed = vmray.parse_sample_data(child_sample)
+                    child_sample_objects.append(child_sample_parsed)
+                for x in child_sample_objects:
+                    if x and x.get("sample_verdict") != "clean":
+                        verdicts.append(x.get("sample_verdict"))
+                        threat_families.extend(x.get("sample_threat_names", []))
+
+                # if sample_data and sample_data.get("sample_verdict") == "malicious":
+                #     found_malicious = True
+                # if sample_data and sample_data.get("sample_verdict") == "suspicious":
+                #     found_suspicious = True
+                verdicts.append(sample_data.get("sample_verdict"))
+                threat_families.extend(sample_data.get("sample_threat_names", []))
+
+        # if found_malicious:
+        #     verdict = "#VMRay Malicious"
+        # elif found_suspicious:
+        #     verdict = "#VMRay Suspicious"
+        # else:
+        #     verdict = "#VMRay Clean"
+        if "malicious" in verdicts:
+            tags.append("#VMRay Malicious")
+        elif "suspicious" in verdicts:
+            tags.append("#VMRay Suspicious")
+        elif "clean" in verdicts:
+            tags.append("#VMRay Clean")
+        
+
+
+        #remove special characters from threat family names
+        threat_families = [s for s in threat_families if not re.search(REMOVE_SPECIAL_CHAR, s) and not s.count('.')>1]
+
+        # tags.append(verdict)
+        tags.extend(threat_families)
+        tags = list(set(tags))
+        if tags:
+            ms_defender.update_incident(tags, inc_id)
+    return
+
+
+
+def process_file(
+    download_evidences: dict,
+    detection_source: str,
+    threat_name: str,
+    ms_defender: MicrosoftDefender,
+    vmray: VMRay,
+    threat_family: str,
+    alert_id: str
+) -> list:
+    """
+    Process the EDR and AV alert file
+    :param download_evidences:  files to submit
+    :param detection_source: Type of alert
+    :param threat_name: Name of the threat
+    :param ms_defender: MicrosoftDefender Object
+    :param vmray: VMRay object
+    :param threat_family: Threat Family
+    :param alert_id: Alert ID
+    """
+    log.info(
+        "In total %d file evidences need to be"
+        " downloaded from defender and submitted to VMRay.",
+        len(download_evidences),
+    )
+    submissions_list = []
+
     machines = group_evidences_by_machines(download_evidences)
     machines = update_evidence_machine_ids(machines)
-    log.info("%d machines contain evidences.", len(machines))
-
+    log.info("evidences found on %d machines.", len(machines))
     if detection_source == ALERT.WINDOWS_DEFENDER_AV:
         if IngestionConfig.AV_BASED_INGESTION.value:
             if ms_defender.upload_ps_script_to_library():
-                machines = ms_defender.run_av_submission_script(machines, threat_name)
+                machines = ms_defender.run_av_submission_script(machines, alert_id, threat_name)
                 if machines:
                     file_objects = list_all_blob(machines)
-                    submissions = vmray.submit_av_samples(file_objects, threat_family)
-                    submissions = vmray.get_av_submissions(machines[0], submissions)
-                    if machines[0].run_script_live_response_finished:
-                        process_submissions(
-                            vmray,
-                            ms_defender,
-                            submissions,
-                            alert,
-                            AVEnrichment.ACTIVE.value,
-                        )
+                    if len(file_objects) > 0:
+                        submissions = vmray.submit_av_samples(file_objects, threat_family, alert_id, download_evidences)
+                        submissions_list.extend(vmray.get_av_submissions(machines[0], submissions))
+                    else:
+                        log.info("AV Alert: No file found to submit")
 
     if detection_source == ALERT.WINDOWS_DEFENDER_ATP:
         if IngestionConfig.EDR_BASED_INGESTION.value:
-            machines = ms_defender.run_edr_live_response(machines)
+            machines = ms_defender.run_edr_live_response(machines, alert_id)
             successful_evidences = [
                 evidence
                 for machine in machines
@@ -211,10 +394,20 @@ def run(alert, threat_name, detection_source, threat_family):
             )
 
             submissions = vmray.submit_samples(downloaded_evidences)
-            process_submissions(
-                vmray, ms_defender, submissions, alert, EDREnrichment.ACTIVE.value
-            )
+            submissions_list.extend(submissions)
 
+    return submissions_list
+
+
+def process_url(
+    download_evidences: dict, vmray: VMRay, threat_family: str
+) -> list:
+    log.info(
+        "In total, %d URL evidences needs to be downloaded and submitted to VMRay.",
+        len(download_evidences),
+    )
+    url_submission = vmray.submit_url(download_evidences, threat_family)
+    return url_submission
 
 def enrich_alerts(vmray, ms_defender, evidence, child_sample_id):
     """
@@ -235,37 +428,44 @@ def enrich_alerts(vmray, ms_defender, evidence, child_sample_id):
             sample_vtis,
             AVEnrichment.SELECTED_SECTIONS.value,
         )
+        if VMRay_CONFIG.VMRAY_INCIDENT_COMMENTS:
+            ms_defender.enrich_incident(
+                evidence,
+                parse_sample_detail,
+                sample_vtis,
+                AVEnrichment.SELECTED_SECTIONS.value,
+            )
 
 
-def process_indicators(vmray, ms_defender, child_sample_id, alert_id):
+def process_indicators(vmray, ms_defender, child_sample_id, evidence):
     """
     :param vmray: VMRay Object
     :param ms_defender: Microsoft Object
     :param child_sample_id: Child Sample ID
-    :param alert_id: Alert ID
+    :param evidence: Evidence Object
     :return: List of indicator object
     """
     indicator_objects = []
     old_indicators = ms_defender.get_indicators()
     for child_id in child_sample_id:
         child_sample_data = vmray.get_sample(child_id, True)
-        sha256hash = child_sample_data.get("sample_sha256hash")
+        sample_url = child_sample_data.get("sample_webif_url")
+        sample_created_time = child_sample_data.get("sample_created")
         sample_iocs = vmray.get_sample_iocs(child_id)
         ioc_data = vmray.parse_sample_iocs(sample_iocs)
         indicator_objects.extend(
             ms_defender.create_indicator_objects(
-                ioc_data, old_indicators, alert_id, sha256hash
+                ioc_data, old_indicators, sample_url, evidence, sample_created_time
             )
         )
     return indicator_objects
 
 
-def process_submissions(vmray, ms_defender, submissions, alert, is_enrich):
+def process_submissions(vmray, ms_defender, submissions, alert_id, is_enrich):
     """
     :param vmray: VMRay Object
     :param ms_defender: Microsoft Object
     :param submissions: Child Sample ID
-    :param alert: Alert ID
     :param is_enrich: weather enrich the alert on not
     :return: None
     """
@@ -282,15 +482,18 @@ def process_submissions(vmray, ms_defender, submissions, alert, is_enrich):
                 child_sample_id = vmray.get_child_samples(sample_data)
                 if INDICATOR.ACTIVE:
                     indicator_objects = process_indicators(
-                        vmray, ms_defender, child_sample_id, alert.get("id")
+                        vmray, ms_defender, child_sample_id, evidence
                     )
 
                     if indicator_objects:
                         ms_defender.submit_indicators(indicator_objects)
                     else:
-                        log.info("No IOC found in vmray to submit")
+                        log.info("No IOC found in VMRay to submit")
                 if is_enrich:
                     enrich_alerts(vmray, ms_defender, evidence, child_sample_id)
+        else:
+            if submission["comment"]:
+                ms_defender.add_comment_to_alert(alert_id, submission["comment"])
 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -308,7 +511,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         detection_source = req.params.get("detection_source") or req.get_json().get(
             "detection_source"
         )
-
         if not alert:
             return func.HttpResponse(
                 "Invalid Request. Missing 'alert' parameter.", status_code=400
@@ -329,3 +531,5 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         log.error("Exception Occured: %s", str(ex))
         log.error(error_msg)
         return func.HttpResponse("Internal Server Exception", status_code=500)
+
+

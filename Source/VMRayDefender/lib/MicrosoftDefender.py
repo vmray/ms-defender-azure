@@ -13,6 +13,7 @@ from json import dumps
 from os import path
 from string import Template
 from time import sleep
+import re
 
 import requests
 from azure.storage.blob import ContainerSasPermissions, generate_container_sas
@@ -22,6 +23,7 @@ from ..const import (
     ALERT,
     AUTH_ERROR_STATUS_CODE,
     DEFENDER_API,
+    GRAPH_TO_LEGACY_DETECTION_SOURCE,
     HELPER_SCRIPT_FILE_NAME,
     INDICATOR,
     IOC_FIELD_MAPPINGS,
@@ -29,6 +31,7 @@ from ..const import (
     MACHINE_ACTION_STATUS,
     RETRY_STATUS_CODE,
     EnrichmentSectionTypes,
+    REMOVE_SPECIAL_CHAR
 )
 from .Models import Evidence, Indicator
 
@@ -48,10 +51,13 @@ class MicrosoftDefender:
         """
         self.access_token = None
         self.headers = None
+        self.graph_headers = None
         self.config = DEFENDER_API
         self.log = log
+        self._incident_comment_cache = {}
 
         self.authenticate()
+        self.authenticate_graph()
 
     def authenticate(self):
         """
@@ -69,7 +75,7 @@ class MicrosoftDefender:
         }
         try:
             response = self.retry_request(
-                method="POST", url=self.config.AUTH_URL, data=body
+                method="POST", url=self.config.AUTH_URL, data=body, auth=True
             )
             data = response.json()
             self.access_token = data["access_token"]
@@ -80,6 +86,38 @@ class MicrosoftDefender:
             }
             self.log.info(
                 "Successfully authenticated the Microsoft Defender for Endpoint API"
+            )
+        except Exception as err:
+            self.log.error(err)
+            raise
+
+    def authenticate_graph(self):
+        """
+        Authenticate using Azure Active Directory application properties,
+        and retrieves the access token
+        :raise: Exception when credentials/application properties are not properly configured
+        :return: void
+        """
+
+        body = {
+            "client_id": self.config.APPLICATION_ID,
+            "scope": self.config.SOURCE_GRAPH_API,
+            "client_secret": self.config.APPLICATION_SECRET,
+            "grant_type": "client_credentials",
+        }
+        try:
+            response = self.retry_request(
+                method="POST", url=self.config.AUTH_URL.replace("oauth2/token", "oauth2/v2.0/token"), data=body, auth=True
+            )
+            data = response.json()
+            self.access_token = data["access_token"]
+            self.graph_headers = {
+                "Authorization": "Bearer %s" % self.access_token,
+                "User-Agent": self.config.USER_AGENT,
+                "Content-Type": "application/json",
+            }
+            self.log.info(
+                "Successfully authenticated the Graph API Microsoft Defender for Office365"
             )
         except Exception as err:
             self.log.error(err)
@@ -143,77 +181,202 @@ class MicrosoftDefender:
 
         return False
 
-    def get_evidences(self, alert):
+    def get_evidences(self, alert_id):
         """
-        Retrieve alerts and related evidence information
-        https://docs.microsoft.com/en-us/microsoft-365/security/defender-endpoint/get-alerts
-        :exception: when alerts and evidences are not properly retrieved
-        :return alerts: dict of alert objects
-        """
-        request_url = f"{self.config.URL}/api/alerts/{alert}"
+        Retrieve a single alert via Microsoft Graph alerts_v2 and extract
+        file/URL evidence into Evidence objects.
 
-        evidences = {}
+        Graph schema differences vs legacy MDE /api/alerts/{id}:
+          - Evidence array uses typed @odata.type discriminators
+            ('#microsoft.graph.security.fileEvidence', 'urlEvidence',
+            'deviceEvidence', etc.) instead of a flat entityType field.
+          - File evidence puts sha256/sha1/fileName/filePath under fileDetails.
+          - machineId is no longer on the alert; we pull mdeDeviceId from
+            the deviceEvidence entry in the evidence array.
+          - detectionSource values differ ('microsoftDefenderForEndpoint' /
+            'antivirus' instead of 'WindowsDefenderAtp' / 'WindowsDefenderAv').
+            We translate back to legacy values via
+            GRAPH_TO_LEGACY_DETECTION_SOURCE so downstream comparisons
+            against ALERT.WINDOWS_DEFENDER_* and connector.py keep working
+            without further changes.
+
+        :param alert_id: Defender alert id
+        :return: dict keyed by sha256 or url, of Evidence objects
+        """
+        request_url = f"{self.config.SECURITY_GRAPH_API}/alerts_v2/{alert_id}"
+        evidences: dict = {}
 
         try:
             response = self.retry_request(
-                method="GET", url=request_url, headers=self.headers
+                method="GET", url=request_url, headers=self.graph_headers
             )
-            json_response = response.json()
+            alert_data = response.json()
 
-            if not json_response:
+            if not alert_data or "error" in alert_data:
                 self.log.error(
-                    "Failed to parse api response - Error: value key not found in dict."
+                    "Failed to retrieve alert %s: %s",
+                    alert_id,
+                    alert_data.get("error", {}).get("message", "Empty response"),
                 )
                 return evidences
 
-            if "error" in json_response:
-                self.log.error(
-                    "Failed to retrieve alerts - Error: %s"
-                    % json_response["error"]["message"]
-                )
+            # Translate Graph detectionSource enum to legacy value so downstream
+            # comparisons (here and in connector.py) keep using the existing
+            # ALERT.WINDOWS_DEFENDER_* constants.
+            graph_detection_source = alert_data.get("detectionSource")
+            detection_source = GRAPH_TO_LEGACY_DETECTION_SOURCE.get(
+                graph_detection_source, graph_detection_source
+            )
+
+            if detection_source not in ALERT.SELECTED_DETECTION_SOURCES:
                 return evidences
-            raw_alert = json_response
-            self.log.info(f"Successfully retrieved alert {alert}")
-            try:
-                if raw_alert["detectionSource"] not in ALERT.SELECTED_DETECTION_SOURCES:
+
+            self.log.info(f"Successfully retrieved alert {alert_id}")
+
+            if self.config.FILTER_ALERT_TITLE_WITH:
+                title = alert_data.get("title", "").lower()
+                if not any(
+                    filter_value in title
+                    for filter_value in self.config.FILTER_ALERT_TITLE_WITH
+                ):
+                    self.log.info(
+                        f"Skipping alert {alert_id} since its title does not contain any of the filter values provided in FilterAlertTitleWith in configiration"
+                    )
                     return evidences
-                for evidence in raw_alert["evidence"]:
-                    evidence_sha256 = evidence["sha256"]
 
-                    if not all(
-                        [
-                            evidence["entityType"] in ALERT.EVIDENCE_ENTITY_TYPES
-                            and evidence_sha256 is not None
-                            and evidence_sha256.lower() != "none"
-                        ]
-                    ):
+            # machineId moved off the alert top-level in Graph - pull mdeDeviceId
+            # from the first deviceEvidence entry in the evidence array.
+            machine_id = ""
+            for ev in alert_data.get("evidence", []) or []:
+                if ev.get("@odata.type") == "#microsoft.graph.security.deviceEvidence":
+                    machine_id = ev.get("mdeDeviceId") or ""
+                    if machine_id:
+                        break
+
+            for evidence in alert_data.get("evidence", []) or []:
+                odata_type = evidence.get("@odata.type", "")
+
+                if odata_type == "#microsoft.graph.security.fileEvidence":
+                    file_details = evidence.get("fileDetails") or {}
+                    evidence_sha256 = file_details.get("sha256") or ""
+                    sha1 = file_details.get("sha1") or ""
+                    file_name = file_details.get("fileName") or ""
+                    file_path = file_details.get("filePath") or ""
+                    url = ""
+                    entity_type = ALERT.EVIDENCE_FILE_TYPE
+
+                    if not evidence_sha256 or evidence_sha256.lower() == "none":
                         continue
 
-                    if evidence_sha256 in evidences:
-                        evidences[evidence_sha256].alert_ids.add(raw_alert["id"])
-                        evidences[evidence_sha256].machine_ids.add(
-                            raw_alert["machineId"]
+                    if (
+                        detection_source == ALERT.WINDOWS_DEFENDER_AV
+                        and not DEFENDER_API.FETCH_QUARANTINED_FILES
+                    ):
+                        self.log.info(
+                            f"Skipping file evidence for alert {alert_id} since it's from Windows Defender AV and fetching quarantined files is disabled"
                         )
-                    else:
-                        evidences[evidence_sha256] = Evidence(
-                            sha256=evidence_sha256,
-                            sha1=evidence["sha1"],
-                            file_name=evidence["fileName"],
-                            file_path=evidence["filePath"],
-                            alert_id=raw_alert["id"],
-                            machine_id=raw_alert["machineId"],
-                            detection_source=raw_alert["detectionSource"],
-                        )
-                        evidences[evidence_sha256].set_comments(raw_alert["comments"])
-            except Exception as err:
-                self.log.warning("Failed to parse alert object - Error: %s" % err)
-            self.log.info(
-                f"Successfully retrieved alert {alert} and {len(evidences)} evidences"
-            )
+                        continue
+                    key = evidence_sha256
+
+                elif odata_type == "#microsoft.graph.security.urlEvidence":
+                    url = (evidence.get("url") or "").strip()
+                    if not url:
+                        continue
+                    evidence_sha256 = ""
+                    sha1 = ""
+                    file_name = ""
+                    file_path = ""
+                    entity_type = ALERT.EVIDENCE_URL_TYPE
+                    key = url
+
+                else:
+                    continue
+
+                evidence_obj = evidences.get(key) or Evidence(
+                    sha256=evidence_sha256,
+                    sha1=sha1,
+                    file_name=file_name,
+                    file_path=file_path,
+                    alert_id=alert_data["id"],
+                    incident_id=str(alert_data.get("incidentId") or ""),
+                    machine_id=machine_id,
+                    detection_source=detection_source,
+                    url=url,
+                    entity_type=entity_type,
+                )
+                evidence_obj.alert_ids.add(alert_data["id"])
+                if machine_id:
+                    evidence_obj.machine_ids.add(machine_id)
+                evidence_obj.set_comments(alert_data.get("comments", []))
+                evidences[key] = evidence_obj
+
+            self.log.info("Alert %s - %d evidences found", alert_id, len(evidences))
+
         except Exception as err:
-            self.log.error("Failed to retrieve alerts - Error: %s" % err)
+            self.log.error("Exception while retrieving alert %s: %s", alert_id, err)
 
         return evidences
+
+    def update_incident(self, tags, incident_id): #["VMRay Malicious"]
+        """
+        Update incident tags
+        """
+        self.log.info("Adding tags to the incident id %s" % incident_id)
+        try:
+            #get tags from incident if any
+            request_url = f"{self.config.SECURITY_GRAPH_API}/incidents/{incident_id}"
+
+            incident_resp = self.retry_request(
+                method="GET",
+                url=request_url,
+                headers=self.graph_headers,
+            )
+            if incident_resp.status_code != 200:
+                self.log.error(
+                    "Failed to Get incident %s - Error: %s"
+                    % (incident_id, incident_resp.content)
+                )
+            else:
+                incident_data = incident_resp.json()
+                existing_tags = incident_data.get("customTags", [])
+                self.log.info(f"Existing tags for incident {incident_id}: {existing_tags}")
+                for tag in tags:
+                    if tag not in existing_tags:
+                        existing_tags.append(tag) #[maliciouis,clean, "dassfweff"]
+                tags = existing_tags
+
+
+            #tags to have only one vmray verdict
+            new_tags = [tag for tag in tags if "#VMRay" not in tag]
+            if "#VMRay Malicious" in tags:
+                new_tags.append("#VMRay Malicious")
+            elif "#VMRay Suspicious" in tags:
+                new_tags.append("#VMRay Suspicious")
+            elif "#VMRay Clean" in tags:
+                new_tags.append("#VMRay Clean")
+
+                
+            request_data = {"customTags": new_tags}
+            self.log.info(f"Updating incident {incident_id} with tags: {new_tags}")
+            response = self.retry_request(
+                method="PATCH",
+                url=request_url,
+                data=dumps(request_data),
+                headers=self.graph_headers,
+            )
+
+            if response.status_code != 200:
+                self.log.error(
+                    "Failed to update incident %s - Error: %s"
+                    % (incident_id, response.content)
+                )
+            else:
+                self.log.info(f"Successfully update incident {incident_id}")
+
+        except Exception as err:
+            self.log.error(
+                "Failed to update incident %s - Error: %s" % (incident_id, err)
+            )
 
     def get_machine_actions(self, machine_id):
         """
@@ -485,10 +648,11 @@ class MicrosoftDefender:
 
         return live_response
 
-    def run_edr_live_response(self, machines):
+    def run_edr_live_response(self, machines, alert_id):
         """
         This function will execute EDR live response command
         :param machines: List of machine contains evidences
+        :param alert_id: Alert ID
         """
         for machine in machines:
             if len(machine.edr_evidences) > 0:
@@ -606,17 +770,20 @@ class MicrosoftDefender:
                         sleep(MACHINE_ACTION.SLEEP)
                         machine.timeout_counter += 1
                 if machine.has_pending_edr_actions():
-                    self.log.error(
-                        "Machine %s was not available during the timeout (%s seconds)"
-                        % (machine.id, MACHINE_ACTION.MACHINE_TIMEOUT)
+                    comment = (
+                        f"Machine {machine.id} was not available"
+                        f" during the timeout ({MACHINE_ACTION.MACHINE_TIMEOUT} seconds)"
                     )
+                    self.log.error(comment)
+                    self.add_comment_to_alert(alert_id, comment)
 
         return machines
 
-    def run_av_submission_script(self, machines, threat_name=""):
+    def run_av_submission_script(self, machines, alert_id, threat_name=""):
         """
         This function will execute AV live response command
         :param machines: List of machine contains evidences
+        :param alert_id: Alert ID
         :param threat_name: Threat name from alert response
         """
         for machine in machines:
@@ -738,12 +905,16 @@ class MicrosoftDefender:
                                                                 "NoMatchFound"
                                                                 in log_msg
                                                             ):
-                                                                self.log.info(
+                                                                d_msg = (
                                                                     "The evidence hash does"
                                                                     " not match the hash of any quarantined files."
                                                                     "Or defender block the quarantine file during"
                                                                     " hash calculation."
                                                                 )
+                                                                self.log.info(
+                                                                    d_msg
+                                                                )
+                                                                self.add_comment_to_alert(alert_id, d_msg)
                                                             machine.run_script_live_response_finished = (
                                                                 True
                                                             )
@@ -755,9 +926,13 @@ class MicrosoftDefender:
                                                                 )
                                                                 sleep(300)
                                                                 continue
+                                                            comment = ("No quarantined files found in the machine."
+                                                                       " Microsoft Defender may have already removed"
+                                                                       " them from the quarantine folder.")
                                                             self.log.info(
-                                                                "No Quarantine Files Found"
+                                                                comment
                                                             )
+                                                            self.add_comment_to_alert(alert_id, comment)
                                         machine.run_script_live_response_finished = True
                                         self.log.info(
                                             "Run script live response job successfully finished for machine %s"
@@ -783,12 +958,18 @@ class MicrosoftDefender:
                         machine.timeout_counter += 1
 
                 if MACHINE_ACTION.MACHINE_RETRY <= machine.timeout_counter:
-                    self.log.error(
-                        "Machine %s was not available during the timeout (%s seconds)"
-                        % (machine.id, MACHINE_ACTION.MACHINE_TIMEOUT)
+                    comment = (
+                        f"Machine {machine.id} was not available during"
+                        f" the timeout ({MACHINE_ACTION.MACHINE_TIMEOUT} seconds)"
                     )
+                    self.log.error(
+                        comment
+                    )
+                    self.add_comment_to_alert(alert_id, comment)
                 if MACHINE_ACTION.MACHINE_RETRY <= live_response_counter:
-                    self.log.error("Maximum number of live response retries exceeded")
+                    comment = "Live response session failed, maximum retry limit reached."
+                    self.log.error(comment)
+                    self.add_comment_to_alert(alert_id, comment)
 
         return machines
 
@@ -884,18 +1065,28 @@ class MicrosoftDefender:
         return indicators
 
     def create_indicator_objects(
-        self, indicator_data, old_indicators, alert_id, hash_value
+        self, indicator_data, old_indicators, sample_url, evidence, sample_created_time
     ):
         """
         Create indicators objects based on VMRay Analyzer indicator data and retrieved indicators from Microsoft Defender for Endpoint
         :param indicator_data: dict of indicators which retrieved from VMRay submission
         :param old_indicators: set of indicators which retrieved from Microsoft Defender for Endpoint
-        :param alert_id: Defender Alert ID
-        :param hash: Sample Hash
+        :param sample_url: VMRay Sample URL
+        :param evidence: Evidence Object
+        :param sample_created_time: Sample creation time
         :return indicator_objects: list of indicator objects
         """
 
         indicator_objects = []
+        alerts = ", ".join(evidence.alert_ids)
+        generated_by = evidence.sha256 if evidence.entity_type == ALERT.EVIDENCE_FILE_TYPE else evidence.url
+        description = (
+            f"{INDICATOR.DESCRIPTION}\n"
+            f"Alert ID: {alerts}\n"
+            f"Generated By {evidence.entity_type} {generated_by}\n"
+            f"Sample URL: {sample_url}\n"
+            f"Created At: {sample_created_time}"
+        )
         for key in indicator_data:
             if key in IOC_FIELD_MAPPINGS.keys():
                 for indicator_field in IOC_FIELD_MAPPINGS[key]:
@@ -903,20 +1094,35 @@ class MicrosoftDefender:
 
                     for indicator in indicator_value:
                         if indicator[0] not in old_indicators:
-                            expiration_date = datetime.now(timezone.utc) + timedelta(
-                                days=180
-                            )
-                            expiration_date = expiration_date.strftime(
-                                "%Y-%m-%dT%H:%M:%SZ"
-                            )
+                            expiration_date = (
+                                    datetime.now(timezone.utc)
+                                    + timedelta(days=int(INDICATOR.INDICATOREXPIRATION))
+                            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                            action = ""
+                            if indicator_field in ["Url", "IpAddress", "DomainName"]:
+                                action = (
+                                    INDICATOR.DEFENDER_INDICATOR_ACTION_FOR_MALICIOUS_IP_URL
+                                    if indicator[1] == "malicious"
+                                    else INDICATOR.DEFENDER_INDICATOR_ACTION_FOR_SUSPICIOUS_IP_URL
+                                )
+                            elif indicator_field in [
+                                "FileSha256",
+                                "FileSha1",
+                                "FileMd5",
+                            ]:
+                                action = (
+                                    INDICATOR.DEFENDER_INDICATOR_ACTION_FOR_MALICIOUS_FILE
+                                    if indicator[1] == "malicious"
+                                    else INDICATOR.DEFENDER_INDICATOR_ACTION_FOR_SUSPICIOUS_FILE
+                                )
                             indicator_objects.append(
                                 Indicator(
                                     indicator_type=indicator_field,
                                     value=indicator[0],
-                                    action=INDICATOR.ACTION,
+                                    action=action,
                                     application=self.config.APPLICATION_NAME,
                                     title=INDICATOR.TITLE,
-                                    description=f"{INDICATOR.DESCRIPTION}\nAlert ID: {alert_id}\n Generated By {hash_value}",
+                                    description=description,
                                     verdict=indicator[1],
                                     expirationTime=expiration_date,
                                     generate_alert=INDICATOR.INDICATOR_ALERT,
@@ -965,6 +1171,69 @@ class MicrosoftDefender:
         except Exception as err:
             self.log.error(f"Failed to submit indicators - Error: {err}")
 
+
+    def create_comments(self, evidence, sample_data, sample_vtis, enrichment_sections):
+        """
+        Create comment to enrich alerts with VMRay Analyzer submission metadata
+        https://docs.microsoft.com/en-us/microsoft-365/security/defender-endpoint/update-alert
+        :param evidence: evidence object
+        :param sample_data: dict object which contains summary data about the sample
+        :param sample_vtis: dict object which contains parsed VTI data about the sample
+        :param enrichment_sections: list
+        :exception: when alert is not updated properly
+        :return comment:
+        """
+        comment = ""
+        threat_names=sample_data.get("sample_threat_names", [])
+        threat_names = [s for s in threat_names if not re.search(REMOVE_SPECIAL_CHAR, s) and not s.count('.')>1]
+
+        if sample_data.get("sample_type") != "URL":
+            comment = "Evidence SHA256:\n"
+            comment += sample_data["sample_sha256hash"] + "\n\n"
+        else:
+            comment += "Evidence URL:\n"
+            comment += evidence.url + "\n\n"
+
+        if sample_data.get("sample_parent_sample_ids"):
+            comment += "Child Sample of\n"
+            comment += (
+                "Sample IDs: "
+                + ", ".join(map(str, sample_data.get("sample_parent_sample_ids") or []))
+                + "\n\n"
+            )
+        comment += (
+            ("VMRay Verdict: %s\n\n" % sample_data["sample_verdict"].upper())
+            if sample_data["sample_verdict"]
+            else "VMRay Verdict: N/A\n\n"
+        )
+        comment += "VMRay analysis" + " (" + sample_data["sample_created"][:10] + ")" + ":\n"
+        comment += (
+                sample_data["sample_webif_url"]
+                + "\n\n"
+        )
+
+        if (
+            EnrichmentSectionTypes.CLASSIFICATIONS.value in enrichment_sections
+            and sample_data["sample_classifications"]
+        ):
+            comment += "Classifications:\n"
+            comment += "\n".join(sample_data["sample_classifications"]) + "\n\n"
+
+        if (
+            EnrichmentSectionTypes.THREAT_NAMES.value in enrichment_sections
+            and threat_names
+        ):
+            comment += "Threat Names:\n"
+            comment += "\n".join(threat_names) + "\n\n"
+
+        if EnrichmentSectionTypes.VTIS.value in enrichment_sections and sample_vtis:
+            comment += "VTI's:\n"
+            comment += "\n".join(sample_vtis) + "\n\n"
+        if len(comment) > 1000:
+            comment = comment[:1000]
+        return comment
+
+
     def enrich_alerts(self, evidence, sample_data, sample_vtis, enrichment_sections):
         """
         Enrich alerts with VMRay Analyzer submission metadata
@@ -972,55 +1241,186 @@ class MicrosoftDefender:
         :param evidence: evidence object
         :param sample_data: dict object which contains summary data about the sample
         :param sample_vtis: dict object which contains parsed VTI data about the sample
+        :param enrichment_sections: list
         :exception: when alert is not updated properly
         :return void:
         """
-        comment = "Evidence SHA256:\n"
-        comment += sample_data["sample_sha256hash"] + "\n\n"
-        comment += (
-            "VMRAY Analyzer Verdict: %s\n\n" % sample_data["sample_verdict"].upper()
-        )
-        comment += "Sample Url:\n"
-        comment += sample_data["sample_webif_url"] + "\n\n"
-
-        if EnrichmentSectionTypes.CLASSIFICATIONS.value in enrichment_sections:
-            comment += "Classifications:\n"
-            comment += "\n".join(sample_data["sample_classifications"]) + "\n\n"
-
-        if EnrichmentSectionTypes.THREAT_NAMES.value in enrichment_sections:
-            comment += "Threat Names:\n"
-            comment += "\n".join(sample_data["sample_threat_names"]) + "\n\n"
-
-        if EnrichmentSectionTypes.VTIS.value in enrichment_sections:
-            comment += "VTI's:\n"
-            comment += (
-                "\n".join(list(set([vti["operation"] for vti in sample_vtis]))) + "\n\n"
+        comment = ""
+        if not sample_data.get("sample_parent_sample_ids"):
+            comment = self.create_comments(
+                evidence, sample_data, sample_vtis, enrichment_sections
+            )
+        elif (
+                sample_data.get("sample_parent_sample_ids")
+                and sample_data.get("sample_verdict") != "clean"
+        ):
+            comment = self.create_comments(
+                evidence, sample_data, sample_vtis, enrichment_sections
             )
 
-        if b64encode(comment.encode("utf-8")).decode("utf-8") not in evidence.comments:
+        if comment and b64encode(comment.encode("utf-8")).decode("utf-8") not in evidence.comments:
             for alert_id in evidence.alert_ids:
-                try:
-                    request_data = {"comment": comment}
-                    request_url = self.config.URL + "/api/alerts/%s" % alert_id
-                    response = self.retry_request(
-                        method="PATCH",
-                        url=request_url,
-                        data=dumps(request_data),
-                        headers=self.headers,
-                    )
+                self.add_comment_to_alert(alert_id, comment)
 
-                    if response.status_code != 200:
-                        self.log.error(
-                            "Failed to update alert %s - Error: %s"
-                            % (alert_id, response.content)
+
+    def enrich_incident(self, evidence, sample_data, sample_vtis, enrichment_sections):
+        """
+        Append a VMRay enrichment comment to the parent incident of the given evidence.
+        Dedups against comments already present on the incident and against comments
+        this process has already appended in the current run (per-instance cache).
+        :param evidence: evidence object (must carry incident_id)
+        :param sample_data: parsed VMRay sample data
+        :param sample_vtis: parsed VMRay VTI data
+        :param enrichment_sections: list of enrichment section toggles
+        :return: void
+        """
+        incident_id = getattr(evidence, "incident_id", None)
+        if not incident_id:
+            return
+
+        comment = ""
+        if not sample_data.get("sample_parent_sample_ids"):
+            comment = self.create_comments(
+                evidence, sample_data, sample_vtis, enrichment_sections
+            )
+        elif (
+            sample_data.get("sample_parent_sample_ids")
+            and sample_data.get("sample_verdict") != "clean"
+        ):
+            comment = self.create_comments(
+                evidence, sample_data, sample_vtis, enrichment_sections
+            )
+
+        if not comment:
+            return
+
+        existing = self._get_incident_comment_digests(incident_id)
+        digest = b64encode(comment.encode("utf-8")).decode("utf-8")
+        if digest in existing:
+            self.log.info(
+                f"Skipping incident {incident_id} comment - already present"
+            )
+            return
+
+        if self.add_comment_to_incident(incident_id, comment):
+            existing.add(digest)
+
+
+    def _get_incident_comment_digests(self, incident_id):
+        """
+        Return (and lazily populate) the set of base64-encoded comment digests
+        already attached to the given incident. Uses a per-instance cache so
+        multiple evidences sharing an incident do not re-fetch or double-post.
+        """
+        if incident_id in self._incident_comment_cache:
+            return self._incident_comment_cache[incident_id]
+
+        digests = set()
+        try:
+            request_url = f"{self.config.SECURITY_GRAPH_API}/incidents/{incident_id}"
+            response = self.retry_request(
+                method="GET", url=request_url, headers=self.graph_headers
+            )
+            if response.status_code == 200:
+                for item in response.json().get("comments", []) or []:
+                    text = item.get("comment")
+                    if text:
+                        digests.add(
+                            b64encode(text.encode("utf-8")).decode("utf-8")
                         )
-                    else:
-                        self.log.info(f"Successfully update alert {alert_id}")
+            else:
+                self.log.error(
+                    "Failed to get incident %s for comment dedup - Error: %s"
+                    % (incident_id, response.content)
+                )
+        except Exception as err:
+            self.log.error(
+                "Failed to get incident %s for comment dedup - Error: %s"
+                % (incident_id, err)
+            )
 
-                except Exception as err:
+        self._incident_comment_cache[incident_id] = digests
+        return digests
+
+
+    def add_comment_to_incident(self, incident_id, comment):
+        """
+        Append a comment to an incident via the Microsoft Graph Security API
+        sub-resource endpoint POST /incidents/{id}/comments. Each call posts
+        exactly one alertComment; existing comments are preserved server-side.
+        :param incident_id: Defender incident id
+        :param comment: comment body
+        :return: True on success, False otherwise
+        """
+        if not comment:
+            return False
+        try:
+            request_url = f"{self.config.SECURITY_GRAPH_API}/incidents/{incident_id}/comments"
+            request_data = {
+                "@odata.type": "microsoft.graph.security.alertComment",
+                "comment": comment,
+            }
+            response = self.retry_request(
+                method="POST",
+                url=request_url,
+                data=dumps(request_data),
+                headers=self.graph_headers,
+            )
+            if response.status_code not in (200, 204):
+                self.log.error(
+                    "Failed to update incident %s with comment - Error: %s"
+                    % (incident_id, response.content)
+                )
+                return False
+            self.log.info(f"Successfully added comment to incident {incident_id}")
+            return True
+        except Exception as err:
+            self.log.error(
+                "Failed to update incident %s with comment - Error: %s"
+                % (incident_id, err)
+            )
+            return False
+
+
+    def add_comment_to_alert(self, alert_id, comment):
+        """
+        Append a comment to an alert via the Microsoft Graph Security API
+        sub-resource endpoint POST /security/alerts_v2/{id}/comments. Each
+        call posts exactly one alertComment; existing comments are preserved
+        server-side.
+        :param alert_id: Defender alert id
+        :param comment: comment body
+        :return: void
+        """
+        if comment:
+            try:
+                request_data = {
+                    "@odata.type": "microsoft.graph.security.alertComment",
+                    "comment": comment,
+                }
+                request_url = (
+                    self.config.SECURITY_GRAPH_API
+                    + "/alerts_v2/%s/comments" % alert_id
+                )
+                response = self.retry_request(
+                    method="POST",
+                    url=request_url,
+                    data=dumps(request_data),
+                    headers=self.graph_headers,
+                )
+
+                if response.status_code != 200:
                     self.log.error(
-                        "Failed to update alert %s - Error: %s" % (alert_id, err)
+                        "Failed to update alert %s - Error: %s"
+                        % (alert_id, response.content)
                     )
+                else:
+                    self.log.info(f"Successfully update alert {alert_id}")
+
+            except Exception as err:
+                self.log.error(
+                    "Failed to update alert %s - Error: %s" % (alert_id, err)
+                )
 
     def retry_request(
         self,
@@ -1032,6 +1432,7 @@ class MicrosoftDefender:
         headers=None,
         data=None,
         stream=None,
+        auth=False
     ):
         """
         Retries the given API request in case of server errors or rate-limiting (HTTP 5xx or 429).
@@ -1042,6 +1443,9 @@ class MicrosoftDefender:
         :param backoff: backoff time in seconds
         :param headers: Headers to pass with the request
         :param param: Data to pass with the request (if applicable, e.g., for POST requests)
+        :param data: Request body
+        :param stream: Stream
+        :param auth: Weather response from login api or from security api.
         :return: Response object from the request or None if it fails after retries
         """
         attempt = 0
@@ -1055,6 +1459,7 @@ class MicrosoftDefender:
             except requests.HTTPError as herr:
                 if attempt < retries:
                     if response.status_code == AUTH_ERROR_STATUS_CODE:
+                        self.authenticate_graph()
                         self.authenticate()
                         continue
                     if response.status_code in RETRY_STATUS_CODE:
@@ -1065,7 +1470,10 @@ class MicrosoftDefender:
                         attempt += 1
                         continue
                     json_response = response.json()
-                    err_msg = json_response.get("error", {}).get("message", "")
+                    if auth:
+                        err_msg = f"{json_response.get('error')}: {json_response.get('error_description')}"
+                    else:
+                        err_msg = json_response.get("error", {}).get("message", "")
                     self.log.error(f"Error In Defender API calling: {err_msg}")
                     raise Exception(
                         "An error occurred during MicrosoftDefender Retry Request"
@@ -1090,3 +1498,6 @@ class MicrosoftDefender:
                     "An error occurred during MicrosoftDefender Retry Request"
                 ) from err
         raise Exception("Failed to complete microsoft request after multiple retries.")
+
+
+

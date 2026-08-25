@@ -1,58 +1,97 @@
 # Microsoft Defender for Endpoint Azure Connector for VMRay Advanced Malware Sandbox
 
-**Latest Version:** 1.1.2 - **Release Date: 04/05/2026** 
+**Latest Version:** 1.1.3 - **Release Date: 20/08/2026** 
+
+## Table of Contents
+- [Overview](#overview)
+- [Solution Overview](#solution-overview)
+- [Requirements](#requirements)
+- [VMRay Configurations](#vmray-configurations)
+- [Microsoft Defender for Endpoint Configurations](#microsoft-defender-for-endpoint-configurations)
+  - [Creating Application for API Access](#creating-application-for-api-access)
+  - [Activating Live Response and Automated Investigation](#activating-live-response-and-automated-investigation)
+  - [Check Intune settings](#check-intune-settings)
+- [Microsoft Azure Function App Installation And Configuration](#microsoft-azure-function-app-installation-and-configuration)
+  - [Deployment of Function App](#deployment-of-function-app)
+  - [Storage Account Keys](#storage-account-keys)
+  - [Configuration of Function App](#configuration-of-function-app)
+- [Microsoft Azure Logic App Installation And Configuration](#microsoft-azure-logic-app-installation-and-configuration)
+  - [Submit-Defender-Alerts-To-VMRay Logic App Installation](#submit-defender-alerts-to-vmray-logic-app-installation)
+- [Post-Deployment Configuration for Standard Plan](#post-deployment-configuration-for-standard-plan)
+- [Disable Microsoft Defender for VMRay Storage Account](#disable-microsoft-defender-for-vmray-storage-account)
+- [Expected Issues With LogicApps](#expected-issues-with-logicapps)
+- [Debugging](#debugging)
+- [Version History](#version-history)
+- [Steps to Update from previous version](#steps-to-update-from-previous-version)
+- [Automated Deployment (PowerShell Script)](#automated-deployment-powershell-script)
+
+## Deployment Roadmap
+
+Follow these steps **in order** for a first-time setup:
+
+1. [VMRay Configurations](#vmray-configurations) — create the VMRay API key.
+2. [Microsoft Defender for Endpoint Configurations](#microsoft-defender-for-endpoint-configurations) — register the Entra ID app, grant API permissions, enable Live Response, and check Intune settings.
+3. [Microsoft Azure Function App Installation And Configuration](#microsoft-azure-function-app-installation-and-configuration) — deploy the Function App and wire up storage.
+4. [Microsoft Azure Logic App Installation And Configuration](#microsoft-azure-logic-app-installation-and-configuration) — deploy the Logic App that feeds alerts to the Function App.
+5. If you deployed the **Standard Plan** Logic App, complete [Post-Deployment Configuration for Standard Plan](#post-deployment-configuration-for-standard-plan).
+6. [Disable Microsoft Defender for VMRay Storage Account](#disable-microsoft-defender-for-vmray-storage-account) so Defender for Storage doesn't strip malware samples before VMRay can analyze them.
+
+If something isn't working after setup, see [Expected Issues With LogicApps](#expected-issues-with-logicapps) and [Debugging](#debugging).
+
+> **Prefer automation?** Steps 1–4 above (App Registration, Function App, and Logic App deployment) can be run end-to-end with a single interactive PowerShell script instead of clicking through the Azure Portal. See [Automated Deployment (PowerShell Script)](#automated-deployment-powershell-script).
 
 ## Overview
 
-This project is an integration between Microsoft Defender for Endpoint and VMRay products: FinalVerdict and TotalInsight. 
-The connector collects alerts and related evidences, and query or submit these samples into VMRay Sandbox.
-It allows the SOC team to better understand the threat behind the alert.
-It accelerates the triage of alerts by adding comments to the alert in MS Defender Console with the analysis of the sample.
-It improves protection by extracting IOCs from the different stage of the attack and submiting them as Defender indicators.
+This project integrates Microsoft Defender for Endpoint with VMRay's FinalVerdict and TotalInsight products.
+
+The connector collects alerts and related evidence, then queries or submits the associated samples to the VMRay Sandbox for analysis. This helps your SOC team:
+- **Understand the threat** behind each alert, with detailed analysis results.
+- **Triage faster**, since VMRay's analysis is added as a comment directly on the Defender alert and incident.
+- **Improve protection**, by extracting IOCs from each stage of the attack and submitting them as Defender indicators.
 
 ## Solution Overview
-- The connector is built using Azure logic app, Azure functions app and Azure Storage.
-  1. Azure Logic app `SubmitDefenderAlertsToVMRay` monitors the alerts from MS Defender as soon any AV/EDR alerts are generated. If any AV/EDR alert is found, it will send the alert details to the Azure function app `VMRayDefender`.
-  2. Azure function app `VMRayDefender` checks if the alert contains a file or a URL and checks if the file hash or the URL has already been analyzed by VMRay.
-  3. If the hash/URL was already analysed, the system checks the setting VmrayResubmitAfter (default 7 days). if the last submission was older than this value, it resubmits the sample to VMRay. If not it uses results from previous submission.
-  4. For file, Azure function app `VMRayDefender` requests the file from Microsoft Defender by starting a live response session. For URL, it gets it directly from the alert evidence.
-  5. For file, Microsoft Defender starts a live response session that run PowerShell code on the endpoint. The PowerShell moves the files out of quarantine to a temporary folder before sending to Azure storage(vmray-defender-quarantine-files) container. 
-  6. For file, Azure function app `VMRayDefender` monitors the Azure storage(vmray-defender-quarantine-files) container and submits the quarantine file to VMRay.
-  7. Azure function app `VMRayDefender` will wait till the submission of the file or URL is completed. When the VMRay analysis is done VMRay results are sent back to the Azure function app `VMRayDefender`.
-  8. The Azure function app `VMRayDefender` post the results as a note within the relevant defender alert.
-  9. If configured to add comments to incident (Add Comments To Incident), the Azure function app `VMRayDefender` also appends the same VMRay enrichment as a comment on the parent Defender incident, with deduplication to avoid repeated posts across alerts of the same incident.
-  10. If configured to send IOCs, the Azure function app `VMRayDefender` provides the IOCs as the indicators to Microsoft Defender that use them for automatically alerting or blocking.
-  11. If configured to update Defender Incident tags, it will add a tag with the most severe VMRay alert within the incident, as well as a tag with each threat name identified by VMRay.
-   
-**Important**: This solution can only analyze files quarantined by Defender Antivirus, flagged by Defender EDR or downloaded from a URL (child sample). It cannot access files that were removed or blocked outright. 
+
+The connector is built using an Azure Logic App, an Azure Function App, and Azure Storage. Here's what happens end-to-end, from alert to enrichment:
+
+1. The Logic App `SubmitDefenderAlertsToVMRay` watches for new AV/EDR alerts in Defender. When one appears, it sends the alert details to the Function App `VMRayDefender`.
+2. `VMRayDefender` checks whether the alert contains a file or a URL, and whether that file hash or URL has already been analyzed by VMRay.
+3. If it was already analyzed, `VMRayDefender` checks the `VmrayResubmitAfter` setting (default 7 days). If the previous submission is older than that, it resubmits the sample; otherwise it reuses the existing results.
+4. For a **URL**, it's read directly from the alert evidence and submitted to VMRay. Any child sample VMRay downloads while analyzing the URL is treated as additional evidence and goes through the same flow. For a **file**, retrieval depends on how the alert was detected:
+   - **EDR-detected files**: `VMRayDefender` downloads the file straight from the endpoint using a Defender live response `GetFile` command.
+   - **Antivirus-detected (quarantined) files**: `VMRayDefender` uploads a PowerShell script to the endpoint and runs it via live response. The script reads the file directly from Defender's quarantine store and uploads it — still in its encrypted, quarantined form — to the `vmray-defender-quarantine-files` Azure Storage container. The file is never restored to disk or written to a temporary folder on the endpoint.
+5. For quarantined files, `VMRayDefender` downloads the encrypted blob from that storage container and decrypts it in the Function App before submitting it to VMRay.
+6. `VMRayDefender` waits for the VMRay analysis to complete, then receives the results back.
+7. `VMRayDefender` posts the results as a note on the originating Defender alert.
+8. If **Add Comments To Incident** is enabled, the same VMRay enrichment is also appended as a comment on the parent Defender incident (deduplicated so it isn't posted repeatedly for alerts belonging to the same incident).
+9. If IOC submission is enabled, `VMRayDefender` sends the extracted IOCs to Microsoft Defender as indicators, so Defender can automatically alert on or block them.
+10. If incident tagging is enabled, the incident is tagged with the most severe VMRay verdict and with each threat name VMRay identified.
+
+**Important**: This solution can only analyze files that Defender Antivirus quarantined, that Defender EDR flagged, or that were downloaded from a URL (child sample). It cannot access files that were removed or blocked outright.
 
 ![solution_overview](Images/solution_overview.png)
 
 ## Requirements
+
+Before you begin, make sure you have:
 - Microsoft Defender for Endpoint.
-- VMRay Analyzer, VMRay FinalVerdict, VMRay TotalInsight.
-- Microsoft Azure
-  1. Azure functions with Flex Consumption plan.
-     Reference: https://learn.microsoft.com/en-us/azure/azure-functions/flex-consumption-plan
-	 **Note: Flex Consumption plans are not available in all regions, please check if the region your are deploying the function is supported, if not we suggest you to deploy the function app with premium plan. **
-	 Reference: https://learn.microsoft.com/en-us/azure/azure-functions/flex-consumption-how-to?tabs=azure-cli%2Cvs-code-publish&pivots=programming-language-python#view-currently-supported-regions
-  2. Azure functions Premium plan.
-	 Reference: https://learn.microsoft.com/en-us/azure/azure-functions/functions-premium-plan
-  3. Azure Logic App with Consumption plan.
-     Reference: https://learn.microsoft.com/en-us/azure/logic-apps/logic-apps-pricing#consumption-multitenant
-  4. Azure storage with Standard general-purpose v2.
+- VMRay Analyzer, VMRay FinalVerdict, and VMRay TotalInsight.
+- A Microsoft Azure subscription, with access to:
+  1. **Azure Functions – Flex Consumption plan** ([reference](https://learn.microsoft.com/en-us/azure/azure-functions/flex-consumption-plan)).
+     Flex Consumption isn't available in every region — check [supported regions](https://learn.microsoft.com/en-us/azure/azure-functions/flex-consumption-how-to?tabs=azure-cli%2Cvs-code-publish&pivots=programming-language-python#view-currently-supported-regions) first. If your region isn't supported, use the Premium plan instead.
+  2. **Azure Functions – Premium plan** ([reference](https://learn.microsoft.com/en-us/azure/azure-functions/functions-premium-plan)) — fallback if Flex Consumption isn't available in your region.
+  3. **Azure Logic App – Consumption plan** ([reference](https://learn.microsoft.com/en-us/azure/logic-apps/logic-apps-pricing#consumption-multitenant)).
+  4. **Azure Storage – Standard general-purpose v2**.
 
 ## VMRay Configurations
 
-- In VMRay Console, you must create a Connector API key by following the steps below:
-  
-  1. Create a user dedicated to this API key (to avoid that the API key is deleted if an employee leaves)
-  2. Create a role that allows to "View shared submission, analysis and sample" and "Submit sample, manage own jobs, reanalyse old analyses and regenerate analysis reports".
-  3. Assign this role to the created user
-  4. Login as this user and create an API key by opening Settings > Analysis > API Keys.
-  5. Please save the keys, which will be used in configuring the Azure Function.
+In the VMRay Console, create a Connector API key:
 
-     
+1. Create a dedicated user for this API key, so the key doesn't get deleted if an employee leaves.
+2. Create a role with the permissions "View shared submission, analysis and sample" and "Submit sample, manage own jobs, reanalyse old analyses and regenerate analysis reports".
+3. Assign this role to the user you created.
+4. Log in as that user and create an API key under **Settings > Analysis > API Keys**.
+5. Save the key — you'll need it when configuring the Azure Function App.
+
 ## Microsoft Defender for Endpoint Configurations
 
 ### Creating Application for API Access
@@ -132,8 +171,7 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 ### Check Intune settings
 
->- Set the remediation actions to "Quarantine: Moves files to quarantine" for all threat levels via Intune (or Group Policy). In Intunes, go to Endpoint security/Antivirus, open the policy, scroll down to Defender policy under configuration, check the remediation settings.
->- Check “Disable Local Admin Merge” setting in Intunes Antivirus policy: if set to "Enable Local Admin Merge (Default)", no change is needed. if set to “Disable Local Admin Merge”, add to your global exclusion the path: c:\temp\vmray_quarantined_files
+>- Set the remediation action to "Quarantine: Moves files to quarantine" for all threat levels via Intune (or Group Policy). In Intune, go to **Endpoint security > Antivirus**, open the policy, and check the remediation settings under the Defender configuration.
   
 ## Microsoft Azure Function App Installation And Configuration
 
@@ -163,6 +201,8 @@ It improves protection by extracting IOCs from the different stage of the attack
 | Resource Group 	| Select the appropriate Resource Group.                                                              |
 | Region			| Based on Resource Group this will be auto populated.                                                |
 | Function Name		| Please provide a function name if needed to change the default value.                               |
+| Function App Plan SKU *(Premium plan only)* | The Premium plan tier to use: `EP1`, `EP2`, or `EP3` (default `EP1`).                |
+| Storage Account Type *(Premium plan only)* | Redundancy for the deployed storage account: `Standard_LRS`, `Standard_GRS`, or `Standard_RAGRS` (default `Standard_LRS`). |
 | Azure Client ID   | Enter the Azure Client ID created in the App Registration Step.                                     |
 | Azure Client Secret | Enter the Azure Client Secret created in the App Registration Step.                                 |
 |Azure Tenant ID | Enter the Azure Tenant ID of the App Registration.                                                  |
@@ -188,9 +228,10 @@ It improves protection by extracting IOCs from the different stage of the attack
 | Defender Indicator Action For Suspicious IP Address URL | The action that is taken if the indicator is Suspicious URL or IP Address discovered in the organization.                                           |
 | Defender Indicator Action For Malicious File            | The action that is taken if the indicator is Malicious File discovered in the organization.                                                         |
 | Defender Indicator Action For Suspicious File           | The action that is taken if the indicator is Suspicious File discovered in the organization.                                                        |
+| Defender Indicator Alert | If true, Defender indicators created by VMRay will also generate an alert. If false, the indicator is created without generating an alert.        |
 | Add AlertId Tags |If true, Alert ID will be added as tags to VMRay submissions. This cannot be used before VMRay platform release 2026.2 as special character in tags are not supported before that.         |
 | Fetch Quarantined Files| If true, quarantined files will be pulled from host machine and uploaded to VMRay for analysis. If false, only URLs from AV alerts and files linked to EDR alerts are collected          |
-| Filter Alert Title With | If set, only alerts with a title containing this value will be processed. Provide comma seperated values. eg., for vmray, vmray to analyze.          |
+| Filter Alert Title With | If set, only alerts whose title contains one of these values will be processed. Provide comma-separated values, e.g. `vmray, vmray to analyze`.          |
 	
 > Once you enter the values, please click on `Review + create` button.
 
@@ -270,6 +311,10 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 ![22_standard](Images/22_standard.png)
 
+### Optional: Email Notification Playbook
+
+> `LogicApp/azuredeploy2.json` deploys an optional `SendEmailNotification` Logic App that uses an Office 365 connection to send email alerts. It is not required for the core VMRay/Defender enrichment flow above — deploy it only if you want email notifications and are prepared to configure the Office 365 and Azure Blob connections it requires.
+
 ## Post-Deployment Configuration for Standard Plan
 
 ### Step 1: Authorize the API Connection
@@ -302,7 +347,7 @@ It improves protection by extracting IOCs from the different stage of the attack
 #### Get Function App Name and Key:
 > Go to your Function App in Azure.
 
-> Select **`VMRayDefender`** **Note**: If you chose a different name when while deployment, select on that name.
+> Select **`VMRayDefender`**. **Note**: If you chose a different name during deployment, select that name instead.
 
 ![function_app](Images/function_app.png)
 
@@ -363,13 +408,13 @@ It improves protection by extracting IOCs from the different stage of the attack
 	* Low
 	* Informational
 	* UnSpecified	
-- For example, if you want to filter the alert by "Medium" and "High" severity, you need to set the value as ["Medium","High"].	
+- For example, to filter by "Medium" and "High" severity, set the value to `["Medium","High"]`.
 - Allowed values for `DefenderAlertStatus` parameter are listed below, kindly note all values are case-sensitive
 	* New
 	* InProgress
 	* Resolved
 	* Unknown
-- For example, if you want to filter the alert by "New", you need to set the value as ["New"].
+- For example, to filter by "New" status only, set the value to `["New"]`.
 
 ![logicapp01](Images/logicapp01.png)
 
@@ -388,8 +433,16 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 ![defender_disable](Images/defender_disable.png)
 
+## Automated Deployment (PowerShell Script)
+
+> As an alternative to manually clicking through the Azure Portal steps above, `Scripts/Deploy-VMRayDefenderConnector.ps1` is an interactive PowerShell script that automates the App Registration, Function App, and Logic App deployment phases (including the storage key and credential wiring steps that are otherwise manual). It's designed to run from Azure Cloud Shell.
+>
+> Two things still require a manual click, since they can't be done via Azure APIs: the Defender Advanced Features / Intune settings, and the Logic App connection authorization. The script prints exactly what to do for each, at the right moment.
+>
+> See [docs/AUTOMATED-DEPLOYMENT.md](docs/AUTOMATED-DEPLOYMENT.md) for the full guide, including prerequisites, step-by-step usage, re-deployment / existing App Registration reuse, and troubleshooting.
+
 ## Expected Issues With LogicApps
-> Logic App `SubmitDefenderAlertsToVMRay` runs will fail after 2 minutes. This is a expected behaviour and is not an issue.
+> Runs of the `SubmitDefenderAlertsToVMRay` Logic App will show as failed after 2 minutes. This is expected behavior, not an actual issue.
 
 ![32](Images/32.png)
 
@@ -414,6 +467,7 @@ It improves protection by extracting IOCs from the different stage of the attack
 
 | Version        | Release Date | Release Notes
 |:---------------|:-------------|:---------------- |
+| 1.1.3          | `20-08-2026` | <ul><li>Quarantined files are now uploaded to Azure Storage in their original encrypted form and decrypted server-side in the Function App, instead of being restored to a temporary folder on the endpoint. No Defender exclusion path is required for this anymore.</li><li>Fixed Logic App (Standard plan) deployment failure caused by a static access policy name colliding with its parent connection.</li><li>Updated the Logic App template's Node version.</li></ul> |
 | 1.1.2          | `04-05-2026` | <ul><li>Improvement: Added option to also append VMRay enrichment comments to the parent Defender incident (controlled by `Add Comments To Incident`). Includes per-incident dedup to avoid repeated posts across multiple alerts of the same incident.</li></ul> |
 | 1.1.1          | `27-02-2026` | <ul><li>URLs are submitted faster.</li><li>Filter per alert title.</li><li>Setting to disable querying quarantine file.</li></ul> |
 | 1.1.0          | `11-12-2025` | <ul><li>URL analysis: URL included in the alert are also analyzed, as well as any potential file (Child sample) downloaded from the url.</li><li>New Configuration Options Added: Defender indicator actions can be configured separately for malicious and suspicious IOCs, an per file and IP/URL. Configurable expiration time for Defender indicators.</li><li>Incident tags: Add tags to incidents with VMRay most severe verdict and threat names</li><li>Alerts are now enriched with live response status details if errors are encountered during execution</li><li>Threat names are now sanitized by removing special characters before being included in Incident tags and Alert comments</li><li>More context to Defender indicators: link to VMRay sample and timestamp added.</li><li>VTI ordered by severity</li></ul> |

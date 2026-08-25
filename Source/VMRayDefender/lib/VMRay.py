@@ -201,6 +201,28 @@ class VMRay:
             )
             return None
 
+
+    def get_submission_by_query(self, query):
+        """
+        Retrieve analyses details of submission to detect errors
+        :param query: Query
+        :return: dict object which contains analysis information about the submission
+        """
+        method = "GET"
+        url = "/rest/submission/search"
+        params = {'query': f'url like "{query}"'}
+        try:
+            response = self.retry_request(method, url, param=params)
+            if response:
+                self.log.info("URL %s found in VMRay database." % query)
+            return response
+        except Exception as err:
+            self.log.info(
+                "URL %s couldn't retrieved from VMRay. Error: %s"
+                % (query, err)
+            )
+            return None
+
     def parse_sample_data(self, sample):
         """
         Parse and extract summary data about the sample with keys below
@@ -213,6 +235,7 @@ class VMRay:
             "sample_verdict",
             "sample_vti_score",
             "sample_severity",
+            "sample_created",
             "sample_child_sample_ids",
             "sample_parent_sample_ids",
             "sample_md5hash",
@@ -221,6 +244,8 @@ class VMRay:
             "sample_classifications",
             "sample_threat_names",
             "sample_filename",
+            "sample_type",
+            "sample_parent_sample_ids",
         ]
         if sample is not None:
             if isinstance(sample, list):
@@ -230,24 +255,27 @@ class VMRay:
                     sample_data[key] = sample[key]
         return sample_data
 
+
     def parse_sample_vtis(self, vtis):
         """
         Parse and extract VTI details about the sample with keys below
         :param vtis: dict object which contains raw VTI data about the sample
         :return parsed_vtis: dict object which contains parsed VTI data about the sample
         """
-        parsed_vtis = []
-
+        operation_scores = {}
         if vtis is not None:
             for vti in vtis["threat_indicators"]:
-                parsed_vtis.append(
-                    {
-                        "category": vti["category"],
-                        "classifications": vti["classifications"],
-                        "operation": vti["operation"],
-                    }
-                )
-        return parsed_vtis
+                operation = vti.get("operation")
+                score = vti.get("score")
+                if (
+                    operation not in operation_scores
+                    or score > operation_scores[operation]
+                ):
+                    operation_scores[operation] = score
+        sorted_items = sorted(
+            operation_scores.items(), key=lambda kv: (-kv[1], kv[0].lower())
+        )
+        return [f"{score}: {op}" for op, score in sorted_items]
 
     def parse_sample_iocs(self, iocs):
         """
@@ -284,7 +312,7 @@ class VMRay:
         :param iocs: dict object which contains raw IOC data about the sample
         :return network_iocs: dict object which contains domains and IPV4 addresses as IOC values
         """
-        network_iocs = {"domain": set(), "ipv4": set()}
+        network_iocs = {"domain": set(), "ipv4": set(), "url": set()}
 
         for ioc_type in iocs:
             ips = iocs[ioc_type]["iocs"]["ips"]
@@ -296,16 +324,14 @@ class VMRay:
             urls = iocs[ioc_type]["iocs"]["urls"]
             for url in urls:
                 for original_url in url["original_urls"]:
-                    parsed_netloc = urlparse(original_url).netloc
-                    try:
-                        ip_address(parsed_netloc)
-                        network_iocs["ipv4"].add(
-                            (parsed_netloc, url.get("verdict", "unknown"))
-                        )
-                    except ValueError:
-                        network_iocs["domain"].add(
-                            (parsed_netloc, url.get("verdict", "unknown"))
-                        )
+                    network_iocs["url"].add(
+                        (original_url, url.get("verdict", "unknown"))
+                    )
+            domains = iocs[ioc_type]["iocs"]["domains"]
+            for domain in domains:
+                network_iocs["domain"].add(
+                    (domain.get("domain", ""), domain.get("verdict", "unknown"))
+                )
 
         return network_iocs
 
@@ -317,17 +343,20 @@ class VMRay:
         """
         method = "POST"
         url = "/rest/sample/submit"
-
-        params = {
-            "comment": self.config.SUBMISSION_COMMENT,
-            "tags": "EDR_alert",
-            "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT,
-        }
-
         submissions = []
 
         for evidence in evidences:
             try:
+                tags = "EDR_alert"
+                if self.config.ALERT_ID_TAGS and evidence.alert_id:
+                    tags += f", AlertID:{evidence.alert_id}"
+
+                params = {
+                    "comment": self.config.SUBMISSION_COMMENT,
+                    "tags": tags,
+                    "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT,
+                }
+
                 file_obj = BytesIO(evidence.download_file_path)
                 file_obj.name = evidence.file_name
                 params["sample_file"] = file_obj
@@ -348,6 +377,7 @@ class VMRay:
                                 "evidence": evidence,
                             }
                         )
+                        evidence.sample_id = sample_id
                         self.log.debug("File %s submitted to VMRay" % file_obj.name)
                     else:
                         for error in response["errors"]:
@@ -357,6 +387,59 @@ class VMRay:
 
         self.log.info("%d files submitted to VMRay" % len(submissions))
         return submissions
+
+
+    def submit_url(self, evidences:dict, threat_name: str) -> list:
+        """
+        Function to submit urls to VMRay from AV or EDR alerts.
+        :param evidences: List of evidence objects.
+        :param threat_name: Name of the threat.
+        Returns: list: A list of dictionaries containing submission details.
+        """
+        
+        method = "POST"
+        url = "/rest/sample/submit"
+        submissions = []
+        for evidence in evidences.values():
+            try:
+                tags = "URL"
+                if threat_name:
+                    tags += f", {threat_name}"
+                if self.config.ALERT_ID_TAGS and evidence.alert_id:
+                    tags += f", AlertID:{evidence.alert_id}"
+                
+                params = {
+                    "comment": self.config.SUBMISSION_COMMENT,
+                    "tags": tags,
+                    "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT,
+                }
+                params["sample_url"] = evidence.url
+                response = self.retry_request(method, url, param=params)
+                if response:
+                    if len(response["errors"]) == 0:
+                        submission_id = response["submissions"][0]["submission_id"]
+                        sample_id = response["samples"][0]["sample_id"]
+                        submissions.append(
+                            {
+                                "submission_id": submission_id,
+                                "evidence": evidence,
+                                "sha256": evidence.sha256,
+                                "sample_id": sample_id,
+                                "type": "Url",
+                            }
+                        )
+                        evidence.sample_id = sample_id
+                        self.log.info("URL %s submitted to VMRay" % evidence.url)
+                        self.log.info(
+                            f"Submission ID {submission_id} and Sample ID {sample_id}"
+                        )
+                    else:
+                        for error in response["errors"]:
+                            self.log.error(str(error))
+            except Exception as err:
+                self.log.error(err)
+        return submissions
+
 
     def wait_submissions(self, submissions):
         """
@@ -375,6 +458,7 @@ class VMRay:
                 "sample_id": submission["sample_id"],
                 "timestamp": None,
                 "error_count": 0,
+                "comment": ""
             }
             for submission in submissions
         ]
@@ -409,10 +493,11 @@ class VMRay:
                             datetime.now() - submission_object["timestamp"]
                         ).seconds >= VMRay_CONFIG.ANALYSIS_JOB_TIMEOUT:
                             submission_objects.remove(submission_object)
+                            comment = f"Submission job {submission_object['submission_id']} exceeded the configured time threshold."
                             self.log.error(
-                                "Submission job %d exceeded the configured time threshold."
-                                % submission_object["submission_id"]
+                                comment
                             )
+                            submission_object["comment"] = comment
                             yield {
                                 "finished": False,
                                 "response": response,
@@ -522,16 +607,22 @@ class VMRay:
                         submission["evidence"] = machine.av_evidences[evidence]
         return submissions
 
-    def submit_av_samples(self, file_objects, threat_name):
+    def submit_av_samples(self, file_objects, threat_name, alert_id, evidences):
         """
         Submit AV files to VMRay
         :param file_objects: Blob from azure
         :param threat_name: threat_name from an associated alert
+        :param alert_id: alert_id from an associated alert
         :return: Submissions List
         """
+        tags = "AV_Alert"
+        if threat_name:
+            tags += f", {threat_name}"
+        if self.config.ALERT_ID_TAGS and alert_id:
+            tags += f", AlertID:{alert_id}"
         params = {
             "comment": self.config.SUBMISSION_COMMENT,
-            "tags": f"AV_Alert,{threat_name}" if threat_name else "AV_Alert",
+            "tags": tags,
             "user_config": """{"timeout":%d}""" % self.config.ANALYSIS_TIMEOUT,
         }
         method = "POST"
@@ -553,6 +644,9 @@ class VMRay:
                                     "sha256": hash_val,
                                 }
                             )
+                            evidence = evidences.get(hash_val)
+                            if evidence:
+                                evidence.sample_id = sample_id
                             self.log.info(
                                 f"Submission ID {submission_id} and Sample ID {sample_id}"
                             )
@@ -676,3 +770,6 @@ class VMRay:
                 )
                 raise Exception("An error occurred during retry request") from err
         raise Exception("Failed to complete VMRay request after multiple retries.")
+
+
+
