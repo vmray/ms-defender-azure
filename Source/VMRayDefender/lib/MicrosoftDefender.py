@@ -23,6 +23,7 @@ from ..const import (
     ALERT,
     AUTH_ERROR_STATUS_CODE,
     DEFENDER_API,
+    GRAPH_TO_LEGACY_DETECTION_SOURCE,
     HELPER_SCRIPT_FILE_NAME,
     INDICATOR,
     IOC_FIELD_MAPPINGS,
@@ -182,17 +183,32 @@ class MicrosoftDefender:
 
     def get_evidences(self, alert_id):
         """
-        Retrieve alerts and related evidence information
-        https://docs.microsoft.com/en-us/microsoft-365/security/defender-endpoint/get-alerts
-        :exception: when alerts and evidences are not properly retrieved
-        :return alerts: dict of alert objects
+        Retrieve a single alert via Microsoft Graph alerts_v2 and extract
+        file/URL evidence into Evidence objects.
+
+        Graph schema differences vs legacy MDE /api/alerts/{id}:
+          - Evidence array uses typed @odata.type discriminators
+            ('#microsoft.graph.security.fileEvidence', 'urlEvidence',
+            'deviceEvidence', etc.) instead of a flat entityType field.
+          - File evidence puts sha256/sha1/fileName/filePath under fileDetails.
+          - machineId is no longer on the alert; we pull mdeDeviceId from
+            the deviceEvidence entry in the evidence array.
+          - detectionSource values differ ('microsoftDefenderForEndpoint' /
+            'antivirus' instead of 'WindowsDefenderAtp' / 'WindowsDefenderAv').
+            We translate back to legacy values via
+            GRAPH_TO_LEGACY_DETECTION_SOURCE so downstream comparisons
+            against ALERT.WINDOWS_DEFENDER_* and connector.py keep working
+            without further changes.
+
+        :param alert_id: Defender alert id
+        :return: dict keyed by sha256 or url, of Evidence objects
         """
-        request_url = f"{self.config.URL}/api/alerts/{alert_id}"
+        request_url = f"{self.config.SECURITY_GRAPH_API}/alerts_v2/{alert_id}"
         evidences: dict = {}
 
         try:
             response = self.retry_request(
-                method="GET", url=request_url, headers=self.headers
+                method="GET", url=request_url, headers=self.graph_headers
             )
             alert_data = response.json()
 
@@ -204,10 +220,15 @@ class MicrosoftDefender:
                 )
                 return evidences
 
-            if (
-                    alert_data.get("detectionSource")
-                    not in ALERT.SELECTED_DETECTION_SOURCES
-            ):
+            # Translate Graph detectionSource enum to legacy value so downstream
+            # comparisons (here and in connector.py) keep using the existing
+            # ALERT.WINDOWS_DEFENDER_* constants.
+            graph_detection_source = alert_data.get("detectionSource")
+            detection_source = GRAPH_TO_LEGACY_DETECTION_SOURCE.get(
+                graph_detection_source, graph_detection_source
+            )
+
+            if detection_source not in ALERT.SELECTED_DETECTION_SOURCES:
                 return evidences
 
             self.log.info(f"Successfully retrieved alert {alert_id}")
@@ -223,25 +244,51 @@ class MicrosoftDefender:
                     )
                     return evidences
 
-            for evidence in alert_data.get("evidence", []):
-                entity_type = evidence.get("entityType")
-                evidence_sha256 = evidence.get("sha256") or ""
-                sha1 = evidence.get("sha1") or ""
-                file_name = evidence.get("fileName") or ""
-                file_path = evidence.get("filePath") or ""
-                url = (evidence.get("url") or "").strip()
+            # machineId moved off the alert top-level in Graph - pull mdeDeviceId
+            # from the first deviceEvidence entry in the evidence array.
+            machine_id = ""
+            for ev in alert_data.get("evidence", []) or []:
+                if ev.get("@odata.type") == "#microsoft.graph.security.deviceEvidence":
+                    machine_id = ev.get("mdeDeviceId") or ""
+                    if machine_id:
+                        break
 
-                if (
-                        entity_type == ALERT.EVIDENCE_FILE_TYPE
-                        and evidence_sha256
-                        and evidence_sha256.lower() != "none"
-                ):
-                    if alert_data.get("detectionSource") == ALERT.WINDOWS_DEFENDER_AV and not DEFENDER_API.FETCH_QUARANTINED_FILES:
-                        self.log.info(f"Skipping file evidence for alert {alert_id} since it's from Windows Defender AV and fetching quarantined files is disabled")
+            for evidence in alert_data.get("evidence", []) or []:
+                odata_type = evidence.get("@odata.type", "")
+
+                if odata_type == "#microsoft.graph.security.fileEvidence":
+                    file_details = evidence.get("fileDetails") or {}
+                    evidence_sha256 = file_details.get("sha256") or ""
+                    sha1 = file_details.get("sha1") or ""
+                    file_name = file_details.get("fileName") or ""
+                    file_path = file_details.get("filePath") or ""
+                    url = ""
+                    entity_type = ALERT.EVIDENCE_FILE_TYPE
+
+                    if not evidence_sha256 or evidence_sha256.lower() == "none":
+                        continue
+
+                    if (
+                        detection_source == ALERT.WINDOWS_DEFENDER_AV
+                        and not DEFENDER_API.FETCH_QUARANTINED_FILES
+                    ):
+                        self.log.info(
+                            f"Skipping file evidence for alert {alert_id} since it's from Windows Defender AV and fetching quarantined files is disabled"
+                        )
                         continue
                     key = evidence_sha256
-                elif entity_type == ALERT.EVIDENCE_URL_TYPE and url:
+
+                elif odata_type == "#microsoft.graph.security.urlEvidence":
+                    url = (evidence.get("url") or "").strip()
+                    if not url:
+                        continue
+                    evidence_sha256 = ""
+                    sha1 = ""
+                    file_name = ""
+                    file_path = ""
+                    entity_type = ALERT.EVIDENCE_URL_TYPE
                     key = url
+
                 else:
                     continue
 
@@ -251,14 +298,15 @@ class MicrosoftDefender:
                     file_name=file_name,
                     file_path=file_path,
                     alert_id=alert_data["id"],
-                    incident_id=alert_data["incidentId"],
-                    machine_id=alert_data.get("machineId", ""),
-                    detection_source=alert_data.get("detectionSource", ""),
+                    incident_id=str(alert_data.get("incidentId") or ""),
+                    machine_id=machine_id,
+                    detection_source=detection_source,
                     url=url,
                     entity_type=entity_type,
                 )
                 evidence_obj.alert_ids.add(alert_data["id"])
-                evidence_obj.machine_ids.add(alert_data.get("machineId"))
+                if machine_id:
+                    evidence_obj.machine_ids.add(machine_id)
                 evidence_obj.set_comments(alert_data.get("comments", []))
                 evidences[key] = evidence_obj
 
@@ -1335,19 +1383,36 @@ class MicrosoftDefender:
 
 
     def add_comment_to_alert(self, alert_id, comment):
-        """ """
+        """
+        Append a comment to an alert via the Microsoft Graph Security API
+        sub-resource endpoint POST /security/alerts_v2/{id}/comments. Each
+        call posts exactly one alertComment; existing comments are preserved
+        server-side.
+        :param alert_id: Defender alert id
+        :param comment: comment body
+        :return: void
+        """
         if comment:
             try:
-                request_data = {"comment": comment}
-                request_url = self.config.URL + "/api/alerts/%s" % alert_id
+                request_data = {
+                    "@odata.type": "microsoft.graph.security.alertComment",
+                    "comment": comment,
+                }
+                request_url = (
+                    self.config.SECURITY_GRAPH_API
+                    + "/alerts_v2/%s/comments" % alert_id
+                )
                 response = self.retry_request(
-                    method="PATCH",
+                    method="POST",
                     url=request_url,
                     data=dumps(request_data),
-                    headers=self.headers,
+                    headers=self.graph_headers,
                 )
 
-                if response.status_code != 200:
+                # POST to the alerts_v2 comments sub-resource returns 201
+                # Created on success; accept the same set the incident comment
+                # path already accepts rather than 200 alone.
+                if response.status_code not in (200, 201, 204):
                     self.log.error(
                         "Failed to update alert %s - Error: %s"
                         % (alert_id, response.content)

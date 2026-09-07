@@ -40,6 +40,19 @@ def group_evidences_by_machines(evidences):
     for evidence in evidences.values():
         selected_machine_id = list(evidence.machine_ids)[0]
 
+        # Graph exposes the device id only through a deviceEvidence entry in the
+        # alert's evidence array, so an alert can carry file evidence with no
+        # machine attached, leaving machine_id as "". Grouping those under a
+        # Machine("") only leads to live response calls against an empty device
+        # id, which cannot succeed - skip them and say so instead.
+        if not selected_machine_id:
+            log.warning(
+                "Skipping evidence %s: alert has no device evidence, "
+                "so there is no machine to collect it from.",
+                evidence.sha256 or evidence.url,
+            )
+            continue
+
         if selected_machine_id not in machines:
             machines[selected_machine_id] = Machine(selected_machine_id)
 

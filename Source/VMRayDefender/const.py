@@ -278,6 +278,15 @@ MS_DEFENDER_SEVERITY_MAPPING = {
     "clean": "Informational",
 }
 
+# Graph alerts_v2 returns detectionSource using a different enum than the legacy
+# MDE /api/alerts API. Map Graph values back to the legacy strings the rest of
+# the connector (constants, connector.py comparisons) is built around, so the
+# migration stays contained to get_evidences().
+GRAPH_TO_LEGACY_DETECTION_SOURCE = {
+    "microsoftDefenderForEndpoint": "WindowsDefenderAtp",
+    "antivirus": "WindowsDefenderAv",
+}
+
 RETRY_STATUS_CODE = [500, 501, 502, 503, 504, 429]
 AUTH_ERROR_STATUS_CODE = 401
 
