@@ -1409,7 +1409,10 @@ class MicrosoftDefender:
                     headers=self.graph_headers,
                 )
 
-                if response.status_code != 200:
+                # POST to the alerts_v2 comments sub-resource returns 201
+                # Created on success; accept the same set the incident comment
+                # path already accepts rather than 200 alone.
+                if response.status_code not in (200, 201, 204):
                     self.log.error(
                         "Failed to update alert %s - Error: %s"
                         % (alert_id, response.content)
